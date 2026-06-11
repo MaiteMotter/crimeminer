@@ -78,14 +78,14 @@ function extractMobilityFromText(text: string, defaultVal: string = "S/D", isAgg
     if (def.includes('BICI')) return "BICI";
   }
   
-  return "SIN DETERMINAR";
+  return "Sin datos / En investigación";
 }
 
 // 2. EXTRACTOR DE MEDIO EMPLEADO (ARMA / MEDIO)
 function detectWeapon(row: any) {
   const val = getVal(row, "cmedio_empleado");
   const s = String(val || "").toUpperCase().trim();
-  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR") return "SIN DATOS";
+  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR") return "Sin datos / En investigación";
   return s;
 }
 
@@ -155,7 +155,8 @@ function extractObjects(row: any): string[] {
 
   // Términos que queremos agrupar SOLO si están esencialmente solos o sin contexto
   const ambiguousTerms = [
-    "SIN DATOS", "S/D", "N/A", "SIN CLASIFICAR", "DESCONOCIDO", "PENDIENTE", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "S MARK"
+    "SIN DATOS", "S/D", "N/A", "SIN CLASIFICAR", "DESCONOCIDO", "PENDIENTE", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "S MARK",
+    "SIN INFORMACIÓN", "SIN INFORMACION", "SIN_INFORMACION", "SIN_INFORMACIÓN", "SIN DATA"
   ];
 
   // Lista negra de lugares y personas
@@ -167,14 +168,14 @@ function extractObjects(row: any): string[] {
     "DENTRO DE", "COLEGIO", "ESCUELA", "HOSPITAL", "CLÍNICA", "CONSULTORIO", "PARQUE", "PLAZA"
   ];
 
-  if (!target || target === "") return [];
+  if (!target || target === "") return ["BIEN NO ESPECIFICADO / OTROS"];
 
   // Dividimos por delimitadores comunes
   const parts = target.split(/[,\/Y-]/).map(p => p.trim()).filter(p => p.length > 2 || ambiguousTerms.includes(p.toUpperCase()));
 
   const normalized = parts.map(item => {
     const itemLower = item.toLowerCase();
-    // 2. Unificación Absoluta de Genéricos a "S/D"
+    // 2. Unificación Absoluta de Genéricos a "BIEN NO ESPECIFICADO / OTROS"
     if (
       itemLower === "sin clasificar" ||
       itemLower === "sin especificar" ||
@@ -182,19 +183,16 @@ function extractObjects(row: any): string[] {
       itemLower === "sin clasificar / otros" ||
       itemLower === "sin especificar / otros"
     ) {
-      return "S/D";
+      return "BIEN NO ESPECIFICADO / OTROS";
     }
 
     if (ambiguousTerms.includes(item.toUpperCase())) {
-      if (item.toUpperCase() === "SIN CLASIFICAR" || item.toUpperCase() === "SIN ESPECIFICAR") {
-        return "S/D";
-      }
-      return "FALTA DETERMINAR OBJETO";
+      return "BIEN NO ESPECIFICADO / OTROS";
     }
     
-    // Si es un lugar o persona, lo descartamos
+    // Si es un lugar o persona, lo unificamos a bien no especificado
     if (blacklist.some(term => item.toUpperCase() === term || item.toUpperCase().includes(term))) {
-      return null;
+      return "BIEN NO ESPECIFICADO / OTROS";
     }
 
     const itemUpper = item.toUpperCase();
@@ -230,8 +228,19 @@ function extractObjects(row: any): string[] {
 
   const unique = Array.from(new Set(normalized)).map(item => {
     const itemLower = item.toLowerCase();
-    if (itemLower === "sin clasificar" || itemLower === "sin especificar" || itemLower === "sinespecificar") {
-      return "S/D";
+    if (
+      itemLower === "sin clasificar" || 
+      itemLower === "sin especificar" || 
+      itemLower === "sinespecificar" || 
+      itemLower === "s/d" || 
+      itemLower === "sin informacion" || 
+      itemLower === "sin información" || 
+      itemLower === "sin_informacion" || 
+      itemLower === "sin_información" ||
+      itemLower === "sin datos" ||
+      itemLower === "sin data"
+    ) {
+      return "BIEN NO ESPECIFICADO / OTROS";
     }
     return item;
   });
@@ -257,10 +266,10 @@ function getVal(row: any, key: string) {
 // 8. EXTRACTOR DE MOMENTO DEL DÍA (USANDO FHORA_DELITO_DESDE)
 function extractTimeSlot(val: any) {
   const s = String(val || "").toUpperCase().trim();
-  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL") return "HORA NO ESPECIFICADA";
+  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN DATA" || s === "SIN DATOS" || s === "SIN CLASIFICAR") return "Sin datos / En investigación";
   
   const match = s.match(/(\d{1,2}):(\d{2})/);
-  if (!match) return "HORA NO ESPECIFICADA";
+  if (!match) return "Sin datos / En investigación";
   
   const hour = parseInt(match[1]);
   if (hour >= 0 && hour < 6) return "MADRUGADA"; // 00:00 - 05:59
@@ -337,7 +346,7 @@ function sanitizeDescription(desc: string): string {
 
 function extractPlaceType(val: any) {
   const s = String(val || "").toUpperCase().trim();
-  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR") return "ENTORNO NO ESPECIFICADO";
+  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR" || s === "SIN DATA" || s === "SIN DATOS") return "Sin datos / En investigación";
   return sanitizeEncodingError(s);
 }
 
@@ -453,7 +462,7 @@ function extractTacticalInsights(text: string, context: string) {
 // 12. EXTRACTOR DE CONTEXTO ESPECIAL (CCONTEXTO_TEMATICA)
 function extractSpecialContext(val: any) {
   const s = String(val || "").toUpperCase().trim();
-  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL") return "EN INVESTIGACIÓN";
+  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR" || s === "SIN DATA" || s === "SIN DATOS") return "Sin datos / En investigación";
   return s;
 }
 
@@ -670,7 +679,8 @@ const VULNERABILITY_DESCRIPTIONS: Record<string, string> = {
   "INGRESO / EGRESO DOMICILIARIO": "Ataques sincronizados durante la entrada o salida de garajes, cocheras o portones hogareños, donde la atención de la persona se divide operativamente.",
   "VÍCTIMA EN SOLEDAD": "La ausencia absoluta de testigos u otros transeúntes facilita la dominación física del entorno e incrementa la sensación de impunidad del delincuente.",
   "MODALIDAD AL VOLEO / CALLEJERA": "Ataques de oportunidad sin planificación previa, dirigidos contra peatones vulnerables elegidos aleatoriamente durante su tránsito ordinario por la vía pública.",
-  "SIN DATOS": "Cargue un archivo CSV para detectar y describir de forma automática el tipo de vulnerabilidad y la exposición del entorno de la víctima."
+  "SIN DATOS": "Cargue un archivo CSV para detectar y describir de forma automática el tipo de vulnerabilidad y la exposición del entorno de la víctima.",
+  "Sin datos / En investigación": "Cargue un archivo CSV para detectar y describir de forma automática el tipo de vulnerabilidad y la exposición del entorno de la víctima."
 };
 
 const COERCION_DESCRIPTIONS: Record<string, string> = {
@@ -679,7 +689,8 @@ const COERCION_DESCRIPTIONS: Record<string, string> = {
   "USO DE ARMA BLANCA / PUNZANTE": "Amagos y amenazas inminentes con cuchillos, navajas u objetos punzantes improvisados, explotando su alto índice de peligro a cortas distancias.",
   "SIMULACIÓN DE PORTE DE ARMA": "Engaño gestual o verbal, comúnmente llevando la mano a la cintura, para fingir portar un arma letal y acelerar el pánico y entrega de bienes.",
   "INTIMIDACIÓN VERBAL O PSICOLÓGICA": "Uso estricto de amenazas directas, gritos o mandatos hablados hostiles para doblegar la voluntad situacional sin presencia de armas físicas.",
-  "SIN DATOS": "Cargue un archivo CSV para clasificar de manera automática los factores de coerción física o intimidación dominantes en las denuncias."
+  "SIN DATOS": "Cargue un archivo CSV para clasificar de manera automática los factores de coercion física o intimidación dominantes en las denuncias.",
+  "Sin datos / En investigación": "Cargue un archivo CSV para clasificar de manera automática los factores de coerción física o intimidación dominantes en las denuncias."
 };
 
 const ESCAPE_DESCRIPTIONS: Record<string, string> = {
@@ -689,7 +700,8 @@ const ESCAPE_DESCRIPTIONS: Record<string, string> = {
   "FUGA POR VÍA RÁPIDA": "Canalización del escape hacia arterias de rápida circulación, colectoras de doble mano o autopistas para camuflar rápidamente el rodado sospechoso.",
   "FUGA PEATONAL": "Abandono inmediato de la escena a pie o corriendo, con alto índice de mimetización táctica o refugio rápido en edificaciones vecinas.",
   "FUGA EN VEHÍCULO CORRIENTE": "Escape ordenado asimilándose al sentido de circulación y velocidades estándar de la calle para que el rodado escape desapercibido en el parque automotor.",
-  "SIN DATOS": "Cargue un archivo CSV para determinar de manera automática el tipo de transporte y patrones de coordinación empleados en la huida."
+  "SIN DATOS": "Cargue un archivo CSV para determinar de manera automática el tipo de transporte y patrones de coordinación empleados en la huida.",
+  "Sin datos / En investigación": "Cargue un archivo CSV para determinar de manera automática el tipo de transporte y patrones de coordinación empleados en la huida."
 };
 
 export default function Dashboard() {
@@ -958,16 +970,18 @@ export default function Dashboard() {
 
     filteredCrimes.forEach(c => {
       // 1. Selección del objeto único representativo (Consistencia Estadística 1:1)
-      const cleanObjs = (c.objects || [])
-        .map((obj: string) => obj ? getUnifiedObjName(obj) : "")
-        .filter((obj: string) => obj !== "" && obj !== "S/D" && obj !== "SIN DATOS" && obj !== "SIN CLASIFICAR");
-
-      const ambiguousNames = ["S/D", "FALTA DETERMINAR OBJETO", "OBJETO NO IDENTIFICADO", "SIN DATOS", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA"];
-      
       let finalObj = "BIEN NO ESPECIFICADO / OTROS";
-      const validObjs = cleanObjs.filter((obj: string) => !ambiguousNames.includes(obj.toUpperCase().trim()));
-      if (validObjs.length > 0) {
-        finalObj = validObjs[0];
+      if (c.objects && c.objects.length > 0) {
+        const ambiguousNames = [
+          "S/D", "FALTA DETERMINAR OBJETO", "OBJETO NO IDENTIFICADO", "SIN DATOS", 
+          "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", 
+          "BIEN NO ESPECIFICADO / OTROS", "", "SIN INFORMACION", "SIN INFORMACIÓN", 
+          "SIN_INFORMACION", "SIN_INFORMACIÓN", "SIN DATA"
+        ];
+        const valid = c.objects.filter((o: string) => o && !ambiguousNames.includes(o.toUpperCase().trim()));
+        if (valid.length > 0) {
+          finalObj = valid[0];
+        }
       }
       objCounts[finalObj] = (objCounts[finalObj] || 0) + 1;
       
@@ -987,12 +1001,12 @@ export default function Dashboard() {
       // Asegurar reasignación consistente de datos de movilidad (Agresor y Víctima)
       let finalAgMob = c.aggressorMobility;
       let finalViMob = c.victimMobility;
-      const ambiguousMobilities = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
+      const ambiguousMobilities = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", "SIN DETERMINAR", ""];
       if (!finalAgMob || ambiguousMobilities.includes(String(finalAgMob).toUpperCase().trim())) {
-        finalAgMob = "SIN DATOS";
+        finalAgMob = "Sin datos / En investigación";
       }
       if (!finalViMob || ambiguousMobilities.includes(String(finalViMob).toUpperCase().trim())) {
-        finalViMob = "SIN DATOS";
+        finalViMob = "Sin datos / En investigación";
       }
       agCounts[finalAgMob] = (agCounts[finalAgMob] || 0) + 1;
       viCounts[finalViMob] = (viCounts[finalViMob] || 0) + 1;
@@ -1001,14 +1015,39 @@ export default function Dashboard() {
       let finalWeapon = c.weaponType;
       const ambiguousWeapons = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
       if (!finalWeapon || ambiguousWeapons.includes(String(finalWeapon).toUpperCase().trim())) {
-        finalWeapon = "SIN DATOS";
+        finalWeapon = "Sin datos / En investigación";
       }
       weaponCounts[finalWeapon] = (weaponCounts[finalWeapon] || 0) + 1;
 
-      contextCounts[c.specialContext] = (contextCounts[c.specialContext] || 0) + 1;
-      vulnerabilityCounts[c.vulnerability] = (vulnerabilityCounts[c.vulnerability] || 0) + 1;
-      escapeCounts[c.escapeMode] = (escapeCounts[c.escapeMode] || 0) + 1;
-      coercionCounts[c.coercion] = (coercionCounts[c.coercion] || 0) + 1;
+      // Contexto especial
+      let finalContext = c.specialContext;
+      const ambiguousContexts = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", "EN INVESTIGACIÓN", "EN INVESTIGACION", ""];
+      if (!finalContext || ambiguousContexts.includes(String(finalContext).toUpperCase().trim())) {
+        finalContext = "Sin datos / En investigación";
+      }
+      contextCounts[finalContext] = (contextCounts[finalContext] || 0) + 1;
+
+      // Análisis tácticos
+      let finalVuln = c.vulnerability;
+      const ambiguousVulns = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
+      if (!finalVuln || ambiguousVulns.includes(String(finalVuln).toUpperCase().trim())) {
+        finalVuln = "Sin datos / En investigación";
+      }
+      vulnerabilityCounts[finalVuln] = (vulnerabilityCounts[finalVuln] || 0) + 1;
+
+      let finalEscape = c.escapeMode;
+      const ambiguousEscapes = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
+      if (!finalEscape || ambiguousEscapes.includes(String(finalEscape).toUpperCase().trim())) {
+        finalEscape = "Sin datos / En investigación";
+      }
+      escapeCounts[finalEscape] = (escapeCounts[finalEscape] || 0) + 1;
+
+      let finalCoercion = c.coercion;
+      const ambiguousCoercions = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
+      if (!finalCoercion || ambiguousCoercions.includes(String(finalCoercion).toUpperCase().trim())) {
+        finalCoercion = "Sin datos / En investigación";
+      }
+      coercionCounts[finalCoercion] = (coercionCounts[finalCoercion] || 0) + 1;
       
       if (c.aggressorMobility === "OTRO") {
         otherDetailCounts[c.rawAggMobility] = (otherDetailCounts[c.rawAggMobility] || 0) + 1;
@@ -1027,6 +1066,14 @@ export default function Dashboard() {
 
     const sortedObjects = Object.entries(objCounts).map(([name, count]) => ({ name, count: count as number })).sort((a,b) => b.count - a.count);
     
+    let objectsToReturn = [...sortedObjects];
+    if (objectsToReturn.length > 12) {
+      const top11 = objectsToReturn.slice(0, 11);
+      const remaining = objectsToReturn.slice(11);
+      const otherCount = remaining.reduce((acc, curr) => acc + curr.count, 0);
+      objectsToReturn = [...top11, { name: "OTROS BIENES SECUNDARIOS", count: otherCount }];
+    }
+
     // 3. Algoritmo de Salto en la Serie para el Gráfico/Listado
     let topTangible = "No identificado";
     if (sortedObjects.length > 0) {
@@ -1039,7 +1086,7 @@ export default function Dashboard() {
     }
 
     return {
-      objects: sortedObjects.slice(0, 12),
+      objects: objectsToReturn,
       topTangible,
       topBarrio: sortedBarrios.filter(b => b[0] !== "PENDIENTE DE ANÁLISIS GEOGRÁFICO" && b[0] !== "FUERA DE JURISDICCIÓN" && b[0] !== "DESCONOCIDO")[0]?.[0] || "N/A",
       topMO: Object.entries(moCounts).sort((a: any, b: any) => b[1] - a[1]).filter(m => m[0] !== "SIN CLASIFICAR")[0]?.[0] || "SIN CLASIFICAR",
@@ -1075,9 +1122,14 @@ export default function Dashboard() {
     let totalCount = filteredCrimes.length;
 
     filteredCrimes.forEach(c => {
-      const place = sanitizeEncodingError(c.placeType || "ENTORNO NO ESPECIFICADO");
-      const time = c.timeSlot || "HORA NO ESPECIFICADA";
-      const obj = sanitizeEncodingError(c.targetObject || "OBJETO NO IDENTIFICADO");
+      let place = sanitizeEncodingError(c.placeType || "Sin datos / En investigación");
+      if (place === "ENTORNO NO ESPECIFICADO") place = "Sin datos / En investigación";
+
+      let time = c.timeSlot || "Sin datos / En investigación";
+      if (time === "HORA NO ESPECIFICADA") time = "Sin datos / En investigación";
+
+      let obj = sanitizeEncodingError(c.targetObject || "Sin datos / En investigación");
+      if (obj === "OBJETO NO IDENTIFICADO" || obj === "S/D" || obj === "SIN CLASIFICAR") obj = "Sin datos / En investigación";
       
       // Concatenar con el signo mas y espacios obligatorios " + "
       const combo = `${place} + ${time} + ${obj}`;
@@ -1553,7 +1605,7 @@ export default function Dashboard() {
                   <div className="bg-white p-8 rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col justify-center">
                     <h4 className="font-black mb-8 flex items-center gap-3 text-gray-800 uppercase text-[10px] tracking-[0.2em] leading-none"><Sword size={16} className="text-[#EE751E]" /> Analisis de medios empleados por el agresor</h4>
                     <div className="space-y-4">
-                      {(stats.weapons || []).slice(0, 5).map((w, i) => (
+                      {(stats.weapons || []).map((w, i) => (
                         <div key={i} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100 group hover:border-[#EE751E]/50 transition-all cursor-default">
                           <span className="text-[10px] font-black uppercase text-gray-600 group-hover:text-[#1e293b]">{w.name}</span>
                           <span className="text-sm font-black font-mono text-[#EE751E]">{w.value}</span>
