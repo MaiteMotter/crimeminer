@@ -18,17 +18,19 @@ import {
 const COLORS = ['#3C4C9A', '#D0234F', '#EE751E', '#4A4963', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b'];
 
 // 1. EXTRACTOR DE MOVILIDAD (NLP + JERARQUÍA ESTRÍCTA SEGÚN EJEMPLOS)
-function extractMobilityFromText(text: string, defaultVal: string = "S/D", isAggressor: boolean = false) {
+function extractMobilityFromText(text: string, defaultVal: string = "S/D", isAggressor: boolean = false): string[] {
   const s = String(text || "").toUpperCase();
   const def = String(defaultVal || "").toUpperCase();
   const searchIn = s + " " + def;
+
+  const results: string[] = [];
 
   // 1. Detección de "ESTACIONADA" (Solo para víctimas: objeto dejado/apoyado/estacionado)
   if (!isAggressor) {
     if (s.includes('DEJE ESTACIONAD') || s.includes('DEJE MI') || s.includes('ESTACIONE MI') || 
         s.includes('ESTACIONADA EN') || s.includes('APOYADA EN') || s.includes('QUEDO EN LA PUERTA') ||
         s.includes('QUEDO ESTACIONAD') || s.includes('ESTABA ESTACIONAD') || s.includes('DEJAMOS ESTACIONAD')) {
-      return "ESTACIONADA";
+      results.push("ESTACIONADA");
     }
   }
 
@@ -37,48 +39,52 @@ function extractMobilityFromText(text: string, defaultVal: string = "S/D", isAgg
                  s.includes('ZANELLA') || s.includes('HONDA WAVE') || s.includes('WAVE') || 
                  s.includes('BAJAJ') || s.includes('ROUSER') || s.includes('YBR') || s.includes('110CC') ||
                  s.includes('CICLOMOTOR') || s.includes('MOTOMEL');
+  if (isMoto) {
+    results.push("MOTO");
+  }
   
   // 3. Detección de AUTO
   const isAuto = s.includes('AUTO') || s.includes('CAMIONETA') || s.includes('COCHE') || 
                  s.includes('PARTICULAR') || s.includes('VEHICULO') || s.includes('UTILITARIO') ||
                  s.includes('PEUGEOT') || s.includes('RENAULT') || s.includes('FORD');
+  if (isAuto) {
+    results.push("AUTO");
+  }
 
   // 4. Marcadores de POSICIÓN HUMANA (A PIE)
-  // "NOS ENCONTRAMOS" o "PARADO" implican vulnerabilidad peatonal incluso si hay vehículos cerca (según el análisis del usuario)
   const isHumanMarker = s.includes('A PIE') || s.includes('CAMINANDO') || s.includes('PEATON') || 
                         s.includes('PARADO') || s.includes('PARADA') || s.includes('NOS ENCONTRAMOS') || 
                         s.includes('TROTANDO') ||
                         s.includes('CORRIENDO');
-
-  // APLICACIÓN DE JERARQUÍA SEGÚN ROL:
-  
-  if (isAggressor) {
-    // Para el agresor, si se menciona una moto/auto, asumimos que se desplaza en ella.
-    if (isMoto) return "MOTO";
-    if (isAuto) return "AUTO";
-    if (isHumanMarker) return "A PIE";
-  } else {
-    // Para la víctima, priorizamos los marcadores de "estar parado/caminando" 
-    // sobre la presencia de vehículos (que podrían ser el objeto del robo o estar estacionados al lado).
-    if (isHumanMarker) return "A PIE";
-    if (isMoto) return "MOTO";
-    if (isAuto) return "AUTO";
+  if (isHumanMarker) {
+    results.push("A PIE");
   }
 
   // Otros medios
-  if (searchIn.includes('BICI') || searchIn.includes('BICICLETA') || searchIn.includes('MTB')) return "BICI";
-  if (searchIn.includes('TAXI') || searchIn.includes('REMIS')) return "TAXI/REMIS";
-  if (searchIn.includes('COLECTIVO') || searchIn.includes('OMNIBUS')) return "COLECTIVO";
+  if (searchIn.includes('BICI') || searchIn.includes('BICICLETA') || searchIn.includes('MTB')) {
+    results.push("BICI");
+  }
+  if (searchIn.includes('TAXI') || searchIn.includes('REMIS')) {
+    results.push("TAXI/REMIS");
+  }
+  if (searchIn.includes('COLECTIVO') || searchIn.includes('OMNIBUS')) {
+    results.push("COLECTIVO");
+  }
 
   // Fallback 1: Si no hay marcas claras en texto, probar con el valor de la columna
-  if (def !== "S/D" && def !== "" && def !== "SIN CLASIFICAR" && def !== "NULL") {
-    if (def.includes('PIE')) return "A PIE";
-    if (def.includes('MOTO')) return "MOTO";
-    if (def.includes('AUTO')) return "AUTO";
-    if (def.includes('BICI')) return "BICI";
+  if (results.length === 0 && def !== "S/D" && def !== "" && def !== "SIN CLASIFICAR" && def !== "NULL") {
+    if (def.includes('PIE')) results.push("A PIE");
+    else if (def.includes('MOTO')) results.push("MOTO");
+    else if (def.includes('AUTO')) results.push("AUTO");
+    else if (def.includes('BICI')) results.push("BICI");
   }
-  
-  return "Sin datos / En investigación";
+
+  if (results.length === 0) {
+    results.push("Sin datos / En investigación");
+  }
+
+  // Quitar duplicados
+  return Array.from(new Set(results));
 }
 
 // 2. EXTRACTOR DE MEDIO EMPLEADO (ARMA / MEDIO)
@@ -266,12 +272,25 @@ function getVal(row: any, key: string) {
 // 8. EXTRACTOR DE MOMENTO DEL DÍA (USANDO FHORA_DELITO_DESDE)
 function extractTimeSlot(val: any) {
   const s = String(val || "").toUpperCase().trim();
-  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN DATA" || s === "SIN DATOS" || s === "SIN CLASIFICAR") return "Sin datos / En investigación";
+  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN DATA" || s === "SIN DATOS" || s === "SIN CLASIFICAR" || s === "") {
+    return "Sin datos / En investigación";
+  }
   
-  const match = s.match(/(\d{1,2}):(\d{2})/);
+  // Eliminar cualquier asignación por defecto que fuerce horas simuladas
+  if (s === "00:00" || s === "12:00" || s === "00:00:00" || s === "12:00:00") {
+    return "Sin datos / En investigación";
+  }
+  
+  const match = s.match(/^(\d{1,2}):(\d{2})/);
   if (!match) return "Sin datos / En investigación";
   
-  const hour = parseInt(match[1]);
+  const hour = parseInt(match[1], 10);
+  const minute = parseInt(match[2], 10);
+  
+  if (isNaN(hour) || hour < 0 || hour > 23 || isNaN(minute) || minute < 0 || minute > 59) {
+    return "Sin datos / En investigación";
+  }
+  
   if (hour >= 0 && hour < 6) return "MADRUGADA"; // 00:00 - 05:59
   if (hour >= 6 && hour < 12) return "MAÑANA";   // 06:00 - 11:59
   if (hour >= 12 && hour < 18) return "TARDE";   // 12:00 - 17:59
@@ -346,7 +365,21 @@ function sanitizeDescription(desc: string): string {
 
 function extractPlaceType(val: any) {
   const s = String(val || "").toUpperCase().trim();
-  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR" || s === "SIN DATA" || s === "SIN DATOS") return "Sin datos / En investigación";
+  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR" || s === "SIN DATA" || s === "SIN DATOS" || s === "VACIO" || s === "VACÍO" || s === "") {
+    return "Sin datos / En investigación";
+  }
+  
+  // Preservación estricta de términos de alto valor analítico-situacional (evitando "OTROS")
+  if (s.includes("OBRA EN CONSTRUCCION") || s.includes("OBRA EN CONSTRUCCIÓN") || s === "OBRA" || s === "OBRAS") {
+    return "OBRA EN CONSTRUCCIÓN";
+  }
+  if (s.includes("TERRENO BALDIO") || s.includes("TERRENO BALDÍO") || s === "BALDIO" || s === "BALDÍO") {
+    return "TERRENO BALDÍO";
+  }
+  if (s === "PLAZA" || s === "PARQUE" || s.startsWith("PLAZA ") || s.startsWith("PARQUE ")) {
+    return "PLAZA";
+  }
+  
   return sanitizeEncodingError(s);
 }
 
@@ -413,47 +446,68 @@ function extractTacticalInsights(text: string, context: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase();
   
-  let vulnerability = "MODALIDAD AL VOLEO / CALLEJERA";
-  let coercion = "INTIMIDACIÓN VERBAL O PSICOLÓGICA";
-  let escape = "FUGA EN VEHÍCULO CORRIENTE";
+  const vulnerability: string[] = [];
+  const coercion: string[] = [];
+  const escape: string[] = [];
 
   // --- LÓGICA DE VULNERABILIDAD (ENTORNO / VÍCTIMA) ---
   if (c.includes("GENERO") || c.includes("VINCULAR") || c.includes("DOMESTICA") || c.includes("PAREJA")) {
-    vulnerability = "ENTORNO VINCULAR / RUTINA";
-  } else if (s.includes('PARADA') || s.includes('ESPERANDO') || s.includes('COLECTIVO') || s.includes('BONDI') || s.includes('LINEA ')) {
-    vulnerability = "ESPERA DE TRANSPORTE PÚBLICO";
-  } else if (s.includes('CELULAR') || s.includes('WHATSAPP') || s.includes('TELEFONO') || s.includes('FONO') || s.includes('PANTALLA') || s.includes('MANDANDO MSJ')) {
-    vulnerability = "DISTRACCIÓN CON DISPOSITIVO";
-  } else if (s.includes('OSCURA') || s.includes('POCA LUZ') || s.includes('ILUMINACION') || s.includes('NOCHE') || s.includes('SIN LUZ') || s.includes('APAGADO')) {
-    vulnerability = "FALTA DE ILUMINACIÓN URBANA";
-  } else if (s.includes('PORTON') || s.includes('COCHERA') || s.includes('GARAJE') || s.includes('GUARDANDO') || s.includes('ABRIENDO') || s.includes('INGRESANDO')) {
-    vulnerability = "INGRESO / EGRESO DOMICILIARIO";
-  } else if (s.includes('SOLO') || s.includes('SOLA') || s.includes('SOLEDAD') || s.includes('CAMINABA ASILADA') || s.includes('NO HABIA NADIE')) {
-    vulnerability = "VÍCTIMA EN SOLEDAD";
+    vulnerability.push("ENTORNO VINCULAR / RUTINA");
+  }
+  if (s.includes('PARADA') || s.includes('ESPERANDO') || s.includes('COLECTIVO') || s.includes('BONDI') || s.includes('LINEA ')) {
+    vulnerability.push("ESPERA DE TRANSPORTE PÚBLICO");
+  }
+  if (s.includes('CELULAR') || s.includes('WHATSAPP') || s.includes('TELEFONO') || s.includes('FONO') || s.includes('PANTALLA') || s.includes('MANDANDO MSJ')) {
+    vulnerability.push("DISTRACCIÓN CON DISPOSITIVO");
+  }
+  if (s.includes('OSCURA') || s.includes('POCA LUZ') || s.includes('ILUMINACION') || s.includes('NOCHE') || s.includes('SIN LUZ') || s.includes('APAGADO')) {
+    vulnerability.push("FALTA DE ILUMINACIÓN URBANA");
+  }
+  if (s.includes('PORTON') || s.includes('COCHERA') || s.includes('GARAJE') || s.includes('GUARDANDO') || s.includes('ABRIENDO') || s.includes('INGRESANDO')) {
+    vulnerability.push("INGRESO / EGRESO DOMICILIARIO");
+  }
+  if (s.includes('SOLO') || s.includes('SOLA') || s.includes('SOLEDAD') || s.includes('CAMINABA ASILADA') || s.includes('NO HABIA NADIE')) {
+    vulnerability.push("VÍCTIMA EN SOLEDAD");
+  }
+  if (vulnerability.length === 0) {
+    vulnerability.push("MODALIDAD AL VOLEO / CALLEJERA");
   }
 
   // --- LÓGICA DE COERCIÓN (MÉTODO DOMINANTE) ---
   if (s.includes('CULATAZO') || s.includes('GOLPE') || s.includes('PEGÓ') || s.includes('PATADA') || s.includes('EMPUJO') || s.includes('TIRO AL PISO')) {
-    coercion = "VIOLENCIA FÍSICA EXPLÍCITA";
-  } else if (s.includes('ARMA') || s.includes('FIERRO') || s.includes('PISTOLA') || s.includes('REVOLVER') || s.includes('DISPARO') || s.includes('TIRO')) {
-    coercion = "EXHIBICIÓN / USO DE ARMA DE FUEGO";
-  } else if (s.includes('CUCHILLO') || s.includes('PUNTA') || s.includes('SEVILLANA') || s.includes('DESTORNILLADOR') || s.includes('FACO')) {
-    coercion = "USO DE ARMA BLANCA / PUNZANTE";
-  } else if (s.includes('SIMULO') || s.includes('MANO EN LA CINTURA') || s.includes('DECIA QUE TENIA')) {
-    coercion = "SIMULACIÓN DE PORTE DE ARMA";
+    coercion.push("VIOLENCIA FÍSICA EXPLÍCITA");
+  }
+  if (s.includes('ARMA') || s.includes('FIERRO') || s.includes('PISTOLA') || s.includes('REVOLVER') || s.includes('DISPARO') || s.includes('TIRO')) {
+    coercion.push("EXHIBICIÓN / USO DE ARMA DE FUEGO");
+  }
+  if (s.includes('CUCHILLO') || s.includes('PUNTA') || s.includes('SEVILLANA') || s.includes('DESTORNILLADOR') || s.includes('FACO')) {
+    coercion.push("USO DE ARMA BLANCA / PUNZANTE");
+  }
+  if (s.includes('SIMULO') || s.includes('MANO EN LA CINTURA') || s.includes('DECIA QUE TENIA')) {
+    coercion.push("SIMULACIÓN DE PORTE DE ARMA");
+  }
+  if (coercion.length === 0) {
+    coercion.push("INTIMIDACIÓN VERBAL O PSICOLÓGICA");
   }
 
   // --- LÓGICA DE ESCAPE (PATRÓN DE COORDINACIÓN) ---
   if (s.includes('CONTRAMANO') || s.includes('SENTIDO CONTRARIO') || s.includes('MANO INVERSA')) {
-    escape = "ESCAPE EN CONTRAMANO";
-  } else if (s.includes('PASILLO') || s.includes('PASAJES') || s.includes('ASENTAMIENTO') || s.includes('VILLA')) {
-    escape = "FUGA POR ZONAS INTRINCADAS";
-  } else if (s.includes('VELOCIDAD') || s.includes('RAUDAMENTE') || s.includes('PIQUE') || s.includes('ACELERO') || s.includes('MANGO')) {
-    escape = "FUGA A ALTA VELOCIDAD";
-  } else if (s.includes('COLECTOR') || s.includes('AUTOPISTA') || s.includes('AVENIDA') || s.includes('CIRCUNVALACION')) {
-    escape = "FUGA POR VÍA RÁPIDA";
-  } else if (s.includes('A PIE') || s.includes('CORRIENDO') || s.includes('CORRIO') || s.includes('PI disparó')) {
-    escape = "FUGA PEATONAL";
+    escape.push("ESCAPE EN CONTRAMANO");
+  }
+  if (s.includes('PASILLO') || s.includes('PASAJES') || s.includes('ASENTAMIENTO') || s.includes('VILLA')) {
+    escape.push("FUGA POR ZONAS INTRINCADAS");
+  }
+  if (s.includes('VELOCIDAD') || s.includes('RAUDAMENTE') || s.includes('PIQUE') || s.includes('ACELERO') || s.includes('MANGO')) {
+    escape.push("FUGA A ALTA VELOCIDAD");
+  }
+  if (s.includes('COLECTOR') || s.includes('AUTOPISTA') || s.includes('AVENIDA') || s.includes('CIRCUNVALACION')) {
+    escape.push("FUGA POR VÍA RÁPIDA");
+  }
+  if (s.includes('A PIE') || s.includes('CORRIENDO') || s.includes('CORRIO') || s.includes('PI disparó')) {
+    escape.push("FUGA PEATONAL");
+  }
+  if (escape.length === 0) {
+    escape.push("FUGA EN VEHÍCULO CORRIENTE");
   }
 
   return { vulnerability, coercion, escape };
@@ -514,13 +568,35 @@ function getBarrioNameFromProps(props: any) {
 }
 
 // 11. MAPA NATIVO (MEJORADO CON CALOR Y COROPLETAS)
-function PureLeafletMap({ geoData, stats, crimes }: { geoData: any, stats: any, crimes: any[] }) {
+function PureLeafletMap({ 
+  geoData, 
+  stats, 
+  crimes,
+  allCrimes = [],
+  searchTerm = ""
+}: { 
+  geoData: any; 
+  stats: any; 
+  crimes: any[]; 
+  allCrimes?: any[];
+  searchTerm?: string;
+}) {
   const mapRef = React.useRef<HTMLDivElement>(null);
   const leafletMap = React.useRef<L.Map | null>(null);
   const geoLayer = React.useRef<L.GeoJSON | null>(null);
   const heatLayer = React.useRef<any>(null);
   const [viewMode, setViewMode] = React.useState<'choropleth' | 'heatmap'>('choropleth');
   const mapId = React.useMemo(() => `map-${Math.random().toString(36).substr(2, 9)}`, []);
+
+  const heatmapCrimes = React.useMemo(() => {
+    const s = searchTerm.toLowerCase().trim();
+    if (!s) return allCrimes;
+    return allCrimes.filter(c => 
+      c.description.toLowerCase().includes(s) || 
+      c.modusOperandi.toLowerCase().includes(s) ||
+      c.objects.some((obj: string) => obj.toLowerCase().includes(s))
+    );
+  }, [allCrimes, searchTerm]);
 
   // Efecto para inicializar el mapa
   React.useEffect(() => {
@@ -622,9 +698,9 @@ function PureLeafletMap({ geoData, stats, crimes }: { geoData: any, stats: any, 
           console.error("❌ Error dibujando Coropletas:", err);
         }
       }
-    } else if (viewMode === 'heatmap' && crimes.length > 0) {
+    } else if (viewMode === 'heatmap' && heatmapCrimes.length > 0) {
       try {
-        const heatPoints = crimes
+        const heatPoints = heatmapCrimes
           .filter(c => c.lat && c.lng)
           .map(c => [c.lat, c.lng, 1]); // [lat, lng, intensity]
         
@@ -641,7 +717,7 @@ function PureLeafletMap({ geoData, stats, crimes }: { geoData: any, stats: any, 
         console.error("❌ Error dibujando Mapa de Calor:", err);
       }
     }
-  }, [geoData, crimes, stats, viewMode]);
+  }, [geoData, crimes, heatmapCrimes, stats, viewMode]);
 
   return (
     <div className="relative group overflow-hidden rounded-[40px]">
@@ -750,7 +826,7 @@ export default function Dashboard() {
       console.log(`📍 Iniciando análisis espacial: ${crimes.length} puntos vs ${geoData.features.length} polígonos...`);
       let joinedCount = 0;
       const updatedCrimes = crimes.map(c => {
-        let mappedZone = "DESCONOCIDO"; // Reset para cada punto
+        let mappedZone = "Sin Cuadrante Asignado"; // Reset para cada punto
         let isJoined = false;
 
         if (c.lat && c.lng && c.lat !== 0 && c.lng !== 0) {
@@ -765,10 +841,11 @@ export default function Dashboard() {
               }
             }
             if (!isJoined) {
-              mappedZone = "FUERA DE JURISDICCIÓN";
+              mappedZone = "Resto de la Provincia";
             }
           } catch (e) {
             console.warn("⚠️ Error en cálculo espacial:", e);
+            mappedZone = "Resto de la Provincia";
           }
         }
         
@@ -878,14 +955,15 @@ export default function Dashboard() {
             aggressorMobility: aggressorMobility,
             victimMobility: victimMobility,
             weaponType: detectWeapon(row),
-            timeSlot: extractTimeSlot(getVal(row, "fhora_delito_desde") || getVal(row, "fhora_denuncia")),
+            timeSlot: extractTimeSlot(getVal(row, "fhora_delito_desde")),
             placeType: extractPlaceType(getVal(row, "ctipo_lugar")),
             targetObject: extractTargetObject(row),
             specialContext: context,
             vulnerability: tactical.vulnerability,
             coercion: tactical.coercion,
             escapeMode: tactical.escape,
-            rawAggMobility: aggMob
+            rawAggMobility: aggMob,
+            _rawRow: row
           };
         });
         setCrimes(mappedData);
@@ -925,9 +1003,22 @@ export default function Dashboard() {
     );
   }, [crimes, searchTerm]);
 
+  // Decoupled version of search term filtering for general stats and graphs, ensuring
+  // geographical filters (by Cuadrante Policial) affect only the spatial visualization map
+  const filteredCrimesForStats = React.useMemo(() => {
+    const s = searchTerm.toLowerCase();
+    if (!s) return crimes;
+    // We ignore neighborhood/cuadrante matching here so sectorial analysis runs over full volume
+    return crimes.filter(c => 
+      c.description.toLowerCase().includes(s) || 
+      c.modusOperandi.toLowerCase().includes(s) ||
+      c.objects.some((obj: string) => obj.toLowerCase().includes(s))
+    );
+  }, [crimes, searchTerm]);
+
   const totalDelitosCalculado = React.useMemo(() => {
     const uniqueDelitos = new Set<string>();
-    filteredCrimes.forEach(c => {
+    filteredCrimesForStats.forEach(c => {
       if (c.delitoIds && Array.isArray(c.delitoIds)) {
         c.delitoIds.forEach((id: string) => uniqueDelitos.add(id));
       } else if (c.id) {
@@ -935,7 +1026,7 @@ export default function Dashboard() {
       }
     });
     return uniqueDelitos.size;
-  }, [filteredCrimes]);
+  }, [filteredCrimesForStats]);
 
   const stats = React.useMemo(() => {
     const defaultStats = { 
@@ -943,7 +1034,7 @@ export default function Dashboard() {
       mobility: [], pairs: [], weapons: [], contexts: [], otherBreakdown: [], topTangible: "N/A",
       topVulnerability: "SIN DATOS", topCoercion: "SIN DATOS", topEscape: "SIN DATOS"
     };
-    if (filteredCrimes.length === 0) return defaultStats;
+    if (filteredCrimesForStats.length === 0) return defaultStats;
 
     const objCounts: any = {};
     const nCounts: any = {};
@@ -959,38 +1050,38 @@ export default function Dashboard() {
     const escapeCounts: any = {};
     const coercionCounts: any = {};
 
-    const getUnifiedObjName = (obj: string): string => {
-      if (!obj) return "BIEN NO ESPECIFICADO / OTROS";
-      const upper = obj.trim().toUpperCase();
-      if (upper === "SIN INFORMACIÓN" || upper === "SIN INFORMACION" || upper === "S/D" || upper === "SIN DATOS" || upper === "") {
-        return "BIEN NO ESPECIFICADO / OTROS";
-      }
-      return obj;
-    };
-
-    filteredCrimes.forEach(c => {
-      // 1. Selección del objeto único representativo (Consistencia Estadística 1:1)
-      let finalObj = "BIEN NO ESPECIFICADO / OTROS";
-      if (c.objects && c.objects.length > 0) {
-        const ambiguousNames = [
-          "S/D", "FALTA DETERMINAR OBJETO", "OBJETO NO IDENTIFICADO", "SIN DATOS", 
-          "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", 
-          "BIEN NO ESPECIFICADO / OTROS", "", "SIN INFORMACION", "SIN INFORMACIÓN", 
-          "SIN_INFORMACION", "SIN_INFORMACIÓN", "SIN DATA"
-        ];
-        const valid = c.objects.filter((o: string) => o && !ambiguousNames.includes(o.toUpperCase().trim()));
-        if (valid.length > 0) {
-          finalObj = valid[0];
-        }
-      }
-      objCounts[finalObj] = (objCounts[finalObj] || 0) + 1;
-      
+    filteredCrimesForStats.forEach(c => {
       const b = c.neighborhood;
       nCounts[b] = (nCounts[b] || 0) + 1;
       if (!nDetails[b]) nDetails[b] = { objs: {}, brands: {} };
+
+      // 1. Acumulación Expansiva y Desagregada de Objetos con Nota Metodológica
+      let objsList: string[] = [];
+      if (c.objects && c.objects.length > 0) {
+        objsList = c.objects;
+      } else if (c._rawRow) {
+        objsList = extractObjects(c._rawRow);
+      }
       
-      // Asignar el mismo objeto único al detalle del barrio/cuadrante para consistencia
-      nDetails[b].objs[finalObj] = (nDetails[b].objs[finalObj] || 0) + 1;
+      const ambiguousNames = [
+        "S/D", "FALTA DETERMINAR OBJETO", "OBJETO NO IDENTIFICADO", "SIN DATOS", 
+        "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", 
+        "BIEN NO ESPECIFICADO / OTROS", "", "SIN INFORMACION", "SIN INFORMACIÓN", 
+        "SIN_INFORMACION", "SIN_INFORMACIÓN", "SIN DATA"
+      ];
+
+      const validObjs = objsList.filter((o: string) => o && !ambiguousNames.includes(o.toUpperCase().trim()));
+      
+      if (validObjs.length === 0) {
+        const fallbackObj = "BIEN NO ESPECIFICADO / OTROS";
+        objCounts[fallbackObj] = (objCounts[fallbackObj] || 0) + 1;
+        nDetails[b].objs[fallbackObj] = (nDetails[b].objs[fallbackObj] || 0) + 1;
+      } else {
+        validObjs.forEach((obj: string) => {
+          objCounts[obj] = (objCounts[obj] || 0) + 1;
+          nDetails[b].objs[obj] = (nDetails[b].objs[obj] || 0) + 1;
+        });
+      }
 
       if (c.brands !== "S/D") {
         nDetails[b].brands[c.brands] = (nDetails[b].brands[c.brands] || 0) + 1;
@@ -998,18 +1089,38 @@ export default function Dashboard() {
 
       moCounts[c.modusOperandi] = (moCounts[c.modusOperandi] || 0) + 1;
       
-      // Asegurar reasignación consistente de datos de movilidad (Agresor y Víctima)
-      let finalAgMob = c.aggressorMobility;
-      let finalViMob = c.victimMobility;
+      // Asegurar reasignación consistente de datos de movilidad (Agresor y Víctima) como arrays acumulativos
       const ambiguousMobilities = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", "SIN DETERMINAR", ""];
-      if (!finalAgMob || ambiguousMobilities.includes(String(finalAgMob).toUpperCase().trim())) {
-        finalAgMob = "Sin datos / En investigación";
-      }
-      if (!finalViMob || ambiguousMobilities.includes(String(finalViMob).toUpperCase().trim())) {
-        finalViMob = "Sin datos / En investigación";
-      }
-      agCounts[finalAgMob] = (agCounts[finalAgMob] || 0) + 1;
-      viCounts[finalViMob] = (viCounts[finalViMob] || 0) + 1;
+      const getNormalizedMobilities = (rawMobList: any) => {
+        const arr = Array.isArray(rawMobList) ? rawMobList : [rawMobList];
+        const normalized = arr.map((x: any) => {
+          const s = String(x || "").trim();
+          if (!s || ambiguousMobilities.includes(s.toUpperCase())) {
+            return "Sin datos / En investigación";
+          }
+          return s;
+        });
+        return Array.from(new Set(normalized));
+      };
+
+      const finalAgMobs = getNormalizedMobilities(c.aggressorMobility);
+      const finalViMobs = getNormalizedMobilities(c.victimMobility);
+
+      finalAgMobs.forEach(mob => {
+        agCounts[mob] = (agCounts[mob] || 0) + 1;
+      });
+
+      finalViMobs.forEach(mob => {
+        viCounts[mob] = (viCounts[mob] || 0) + 1;
+      });
+
+      // Consistencia total en pares de interacción: contar todas las combinaciones
+      finalAgMobs.forEach(ag => {
+        finalViMobs.forEach(vi => {
+          const pairKey = `${ag} vs ${vi}`;
+          pairs[pairKey] = (pairs[pairKey] || 0) + 1;
+        });
+      });
 
       // Asegurar reasignación consistente de medios empleados (armas/otros)
       let finalWeapon = c.weaponType;
@@ -1027,35 +1138,38 @@ export default function Dashboard() {
       }
       contextCounts[finalContext] = (contextCounts[finalContext] || 0) + 1;
 
-      // Análisis tácticos
-      let finalVuln = c.vulnerability;
-      const ambiguousVulns = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
-      if (!finalVuln || ambiguousVulns.includes(String(finalVuln).toUpperCase().trim())) {
-        finalVuln = "Sin datos / En investigación";
-      }
-      vulnerabilityCounts[finalVuln] = (vulnerabilityCounts[finalVuln] || 0) + 1;
+      // Análisis tácticos multidireccionales (Soportando arrays de forma expansiva y reteniendo Todo)
+      const getNormalizedTacticals = (rawList: any) => {
+        const arr = Array.isArray(rawList) ? rawList : [rawList];
+        const ambiguous = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
+        const normalized = arr.map((x: any) => {
+          const s = String(x || "").trim();
+          if (!s || ambiguous.includes(s.toUpperCase())) {
+            return "Sin datos / En investigación";
+          }
+          return s;
+        });
+        return Array.from(new Set(normalized));
+      };
 
-      let finalEscape = c.escapeMode;
-      const ambiguousEscapes = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
-      if (!finalEscape || ambiguousEscapes.includes(String(finalEscape).toUpperCase().trim())) {
-        finalEscape = "Sin datos / En investigación";
-      }
-      escapeCounts[finalEscape] = (escapeCounts[finalEscape] || 0) + 1;
+      const finalVulns = getNormalizedTacticals(c.vulnerability);
+      finalVulns.forEach(v => {
+        vulnerabilityCounts[v] = (vulnerabilityCounts[v] || 0) + 1;
+      });
 
-      let finalCoercion = c.coercion;
-      const ambiguousCoercions = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
-      if (!finalCoercion || ambiguousCoercions.includes(String(finalCoercion).toUpperCase().trim())) {
-        finalCoercion = "Sin datos / En investigación";
-      }
-      coercionCounts[finalCoercion] = (coercionCounts[finalCoercion] || 0) + 1;
+      const finalEscapes = getNormalizedTacticals(c.escapeMode);
+      finalEscapes.forEach(e => {
+        escapeCounts[e] = (escapeCounts[e] || 0) + 1;
+      });
+
+      const finalCoercions = getNormalizedTacticals(c.coercion);
+      finalCoercions.forEach(co => {
+        coercionCounts[co] = (coercionCounts[co] || 0) + 1;
+      });
       
       if (c.aggressorMobility === "OTRO") {
         otherDetailCounts[c.rawAggMobility] = (otherDetailCounts[c.rawAggMobility] || 0) + 1;
       }
-
-      // Consistencia total en pares de interacción: contar todas las denuncias
-      const pairKey = `${finalAgMob} vs ${finalViMob}`;
-      pairs[pairKey] = (pairs[pairKey] || 0) + 1;
     });
 
     const mobilityLabels = Array.from(new Set([...Object.keys(agCounts), ...Object.keys(viCounts)]));
@@ -1085,12 +1199,20 @@ export default function Dashboard() {
       }
     }
 
+    const filteredBarrios = sortedBarrios.filter(b => 
+      b[0] !== "PENDIENTE DE ANÁLISIS GEOGRÁFICO" && 
+      b[0] !== "FUERA DE JURISDICCIÓN" && 
+      b[0] !== "DESCONOCIDO" && 
+      b[0] !== "Sin Cuadrante Asignado" && 
+      b[0] !== "Resto de la Provincia"
+    );
+
     return {
       objects: objectsToReturn,
       topTangible,
-      topBarrio: sortedBarrios.filter(b => b[0] !== "PENDIENTE DE ANÁLISIS GEOGRÁFICO" && b[0] !== "FUERA DE JURISDICCIÓN" && b[0] !== "DESCONOCIDO")[0]?.[0] || "N/A",
+      topBarrio: filteredBarrios[0]?.[0] || "N/A",
       topMO: Object.entries(moCounts).sort((a: any, b: any) => b[1] - a[1]).filter(m => m[0] !== "SIN CLASIFICAR")[0]?.[0] || "SIN CLASIFICAR",
-      zoneTable: sortedBarrios.filter(b => b[0] !== "PENDIENTE DE ANÁLISIS GEOGRÁFICO" && b[0] !== "FUERA DE JURISDICCIÓN" && b[0] !== "DESCONOCIDO").slice(0, 10).map(([name, count]: any) => {
+      zoneTable: filteredBarrios.slice(0, 10).map(([name, count]: any) => {
         const brandsEntries = Object.entries(nDetails[name].brands).sort((a: any, b: any) => b[1] - a[1]).slice(0, 2);
         const brandsStr = brandsEntries.map(x => `${x[0].replace(/VEHICULO\s*1\s*:\s*/gi, "").trim()} (${x[1]})`).join(", ");
         const objs = Object.entries(nDetails[name].objs).sort((a: any, b: any) => b[1] - a[1]).slice(0, 1).map(x => x[0].replace(/VEHICULO\s*1\s*:\s*/gi, "").trim()).join("");
@@ -1100,17 +1222,17 @@ export default function Dashboard() {
       pairs: Object.entries(pairs).sort((a: any, b: any) => b[1] - a[1]).slice(0, 6).map(([label, count]) => ({ label, count: count as number })),
       weapons: weaponArr,
       contexts: contextArr,
-      topVulnerability: Object.entries(vulnerabilityCounts).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || "SIN DATOS",
-      topEscape: Object.entries(escapeCounts).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || "SIN DATOS",
-      topCoercion: Object.entries(coercionCounts).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || "SIN DATOS",
+      topVulnerability: Object.entries(vulnerabilityCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "Sin datos / En investigación")[0]?.[0] || "Sin datos / En investigación",
+      topEscape: Object.entries(escapeCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "Sin datos / En investigación")[0]?.[0] || "Sin datos / En investigación",
+      topCoercion: Object.entries(coercionCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "Sin datos / En investigación")[0]?.[0] || "Sin datos / En investigación",
       fullZoneTable: Object.entries(nCounts).map(([name, count]: any) => ({ name, count })),
       otherBreakdown: Object.entries(otherDetailCounts).sort((a: any, b: any) => b[1] - a[1]).slice(0, 6).map(([name, count]) => ({ name, count: count as number }))
     };
-  }, [filteredCrimes]);
+  }, [filteredCrimesForStats]);
 
   // ANÁLISIS LDA Y MÉTRICAS (Minería de Texto - ANÁLISIS CRUZADO ESTRÍCTO)
   const textAnalysis = React.useMemo(() => {
-    if (filteredCrimes.length === 0) {
+    if (filteredCrimesForStats.length === 0) {
       return { 
         lda: [], 
         remainingPercentage: 100, 
@@ -1119,17 +1241,20 @@ export default function Dashboard() {
     }
     
     const comboCounts: Record<string, number> = {};
-    let totalCount = filteredCrimes.length;
+    let totalCount = filteredCrimesForStats.length;
 
-    filteredCrimes.forEach(c => {
+    filteredCrimesForStats.forEach(c => {
       let place = sanitizeEncodingError(c.placeType || "Sin datos / En investigación");
       if (place === "ENTORNO NO ESPECIFICADO") place = "Sin datos / En investigación";
 
       let time = c.timeSlot || "Sin datos / En investigación";
       if (time === "HORA NO ESPECIFICADA") time = "Sin datos / En investigación";
 
-      let obj = sanitizeEncodingError(c.targetObject || "Sin datos / En investigación");
-      if (obj === "OBJETO NO IDENTIFICADO" || obj === "S/D" || obj === "SIN CLASIFICAR") obj = "Sin datos / En investigación";
+      let obj = "BIEN NO ESPECIFICADO / OTROS";
+      const objRaw = String(c.targetObject || "").toUpperCase().trim();
+      if (objRaw && objRaw !== "" && objRaw !== "S/D" && objRaw !== "NULL" && objRaw !== "UNDEFINED" && objRaw !== "OBJETO NO IDENTIFICADO" && objRaw !== "SIN CLASIFICAR" && objRaw !== "SIN DATOS" && objRaw !== "SIN DATA" && objRaw !== "SIN ESPECIFICAR" && objRaw !== "Sin datos / En investigación".toUpperCase()) {
+        obj = sanitizeEncodingError(c.targetObject);
+      }
       
       // Concatenar con el signo mas y espacios obligatorios " + "
       const combo = `${place} + ${time} + ${obj}`;
@@ -1172,7 +1297,7 @@ export default function Dashboard() {
       remainingPercentage,
       metrics: { coherence: 0.88, obs: totalCount, trust: totalCount > 100 ? 96 : 80 } 
     };
-  }, [filteredCrimes]);
+  }, [filteredCrimesForStats]);
 
   return (
     <div className="min-h-screen bg-[#F0F2F5] text-[#1e293b] font-sans selection:bg-[#3C4C9A]/30">
@@ -1282,6 +1407,9 @@ export default function Dashboard() {
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
+                    <span className="text-slate-500 text-xs italic mt-2 block leading-relaxed">
+                      Nota metodológica: La suma de frecuencias en este gráfico puede ser superior al KPI de 'Total de Delitos' debido a la aplicación de minería expansiva, la cual contabiliza la totalidad de los bienes sustraídos en un mismo hecho delictivo (ej. el robo simultáneo de un vehículo y un teléfono celular).
+                    </span>
                   </div>
 
                   <div className="bg-white p-8 rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col h-full min-h-[600px]">
@@ -1648,7 +1776,13 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <PureLeafletMap geoData={geoData} stats={stats} crimes={filteredCrimes} />
+                  <PureLeafletMap 
+                    geoData={geoData} 
+                    stats={stats} 
+                    crimes={filteredCrimes} 
+                    allCrimes={crimes} 
+                    searchTerm={searchTerm} 
+                  />
 
                   <div className="mt-8 p-10 bg-[#f8fafc] rounded-[40px] border border-slate-100">
                     <div className="bg-white p-8 rounded-[32px] border border-slate-100 flex flex-col justify-center max-w-3xl mx-auto text-center">
