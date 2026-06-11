@@ -790,6 +790,13 @@ export default function Dashboard() {
         
         results.data.forEach((row: any) => {
           if (!row) return;
+
+          // Robustez ante Filas Vacías: Descartar celdas/filas sin contenido real o residual
+          const values = Object.values(row);
+          if (values.length === 0 || values.every(v => v === undefined || v === null || String(v).trim() === "")) {
+            return;
+          }
+
           // Filtro Estricto: SOLO 'ctipo_actuacion' === 'Denuncia'
           const actuacion = String(getVal(row, "ctipo_actuacion") || "").trim().toLowerCase();
           if (actuacion !== "denuncia") {
@@ -941,42 +948,63 @@ export default function Dashboard() {
     const coercionCounts: any = {};
 
     const getUnifiedObjName = (obj: string): string => {
-      if (!obj) return obj;
+      if (!obj) return "BIEN NO ESPECIFICADO / OTROS";
       const upper = obj.trim().toUpperCase();
-      if (upper === "SIN INFORMACIÓN" || upper === "SIN INFORMACION") {
+      if (upper === "SIN INFORMACIÓN" || upper === "SIN INFORMACION" || upper === "S/D" || upper === "SIN DATOS" || upper === "") {
         return "BIEN NO ESPECIFICADO / OTROS";
       }
       return obj;
     };
 
     filteredCrimes.forEach(c => {
-      // Contabilizamos cada objeto contenido en el array
-      c.objects.forEach((obj: string) => {
-        if (obj !== "S/D") {
-          const finalObj = getUnifiedObjName(obj);
-          objCounts[finalObj] = (objCounts[finalObj] || 0) + 1;
-        }
-      });
+      // 1. Selección del objeto único representativo (Consistencia Estadística 1:1)
+      const cleanObjs = (c.objects || [])
+        .map((obj: string) => obj ? getUnifiedObjName(obj) : "")
+        .filter((obj: string) => obj !== "" && obj !== "S/D" && obj !== "SIN DATOS" && obj !== "SIN CLASIFICAR");
+
+      const ambiguousNames = ["S/D", "FALTA DETERMINAR OBJETO", "OBJETO NO IDENTIFICADO", "SIN DATOS", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA"];
+      
+      let finalObj = "BIEN NO ESPECIFICADO / OTROS";
+      const validObjs = cleanObjs.filter((obj: string) => !ambiguousNames.includes(obj.toUpperCase().trim()));
+      if (validObjs.length > 0) {
+        finalObj = validObjs[0];
+      }
+      objCounts[finalObj] = (objCounts[finalObj] || 0) + 1;
       
       const b = c.neighborhood;
       nCounts[b] = (nCounts[b] || 0) + 1;
       if (!nDetails[b]) nDetails[b] = { objs: {}, brands: {} };
       
-      c.objects.forEach((obj: string) => {
-        if (obj !== "S/D") {
-          const finalObj = getUnifiedObjName(obj);
-          nDetails[b].objs[finalObj] = (nDetails[b].objs[finalObj] || 0) + 1;
-        }
-      });
+      // Asignar el mismo objeto único al detalle del barrio/cuadrante para consistencia
+      nDetails[b].objs[finalObj] = (nDetails[b].objs[finalObj] || 0) + 1;
 
       if (c.brands !== "S/D") {
         nDetails[b].brands[c.brands] = (nDetails[b].brands[c.brands] || 0) + 1;
       }
 
       moCounts[c.modusOperandi] = (moCounts[c.modusOperandi] || 0) + 1;
-      agCounts[c.aggressorMobility] = (agCounts[c.aggressorMobility] || 0) + 1;
-      viCounts[c.victimMobility] = (viCounts[c.victimMobility] || 0) + 1;
-      weaponCounts[c.weaponType] = (weaponCounts[c.weaponType] || 0) + 1;
+      
+      // Asegurar reasignación consistente de datos de movilidad (Agresor y Víctima)
+      let finalAgMob = c.aggressorMobility;
+      let finalViMob = c.victimMobility;
+      const ambiguousMobilities = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
+      if (!finalAgMob || ambiguousMobilities.includes(String(finalAgMob).toUpperCase().trim())) {
+        finalAgMob = "SIN DATOS";
+      }
+      if (!finalViMob || ambiguousMobilities.includes(String(finalViMob).toUpperCase().trim())) {
+        finalViMob = "SIN DATOS";
+      }
+      agCounts[finalAgMob] = (agCounts[finalAgMob] || 0) + 1;
+      viCounts[finalViMob] = (viCounts[finalViMob] || 0) + 1;
+
+      // Asegurar reasignación consistente de medios empleados (armas/otros)
+      let finalWeapon = c.weaponType;
+      const ambiguousWeapons = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
+      if (!finalWeapon || ambiguousWeapons.includes(String(finalWeapon).toUpperCase().trim())) {
+        finalWeapon = "SIN DATOS";
+      }
+      weaponCounts[finalWeapon] = (weaponCounts[finalWeapon] || 0) + 1;
+
       contextCounts[c.specialContext] = (contextCounts[c.specialContext] || 0) + 1;
       vulnerabilityCounts[c.vulnerability] = (vulnerabilityCounts[c.vulnerability] || 0) + 1;
       escapeCounts[c.escapeMode] = (escapeCounts[c.escapeMode] || 0) + 1;
@@ -986,13 +1014,12 @@ export default function Dashboard() {
         otherDetailCounts[c.rawAggMobility] = (otherDetailCounts[c.rawAggMobility] || 0) + 1;
       }
 
-      if (c.aggressorMobility !== "SIN DATOS") {
-        const pairKey = `${c.aggressorMobility} vs ${c.victimMobility}`;
-        pairs[pairKey] = (pairs[pairKey] || 0) + 1;
-      }
+      // Consistencia total en pares de interacción: contar todas las denuncias
+      const pairKey = `${finalAgMob} vs ${finalViMob}`;
+      pairs[pairKey] = (pairs[pairKey] || 0) + 1;
     });
 
-    const mobilityLabels = Array.from(new Set([...Object.keys(agCounts), ...Object.keys(viCounts)])).filter(l => l !== "SIN DATOS");
+    const mobilityLabels = Array.from(new Set([...Object.keys(agCounts), ...Object.keys(viCounts)]));
     const sortedBarrios = Object.entries(nCounts).sort((a: any, b: any) => b[1] - a[1]);
 
     const weaponArr = Object.entries(weaponCounts).map(([name, value]) => ({ name, value: value as number })).sort((a, b) => b.value - a.value);
