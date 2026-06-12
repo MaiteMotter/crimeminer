@@ -1408,7 +1408,7 @@ export default function Dashboard() {
                       </ResponsiveContainer>
                     </div>
                     <span className="text-slate-500 text-xs italic mt-2 block leading-relaxed">
-                      Nota metodológica: La suma de frecuencias en este gráfico puede ser superior al KPI de 'Total de Delitos' debido a la aplicación de minería expansiva, la cual contabiliza la totalidad de los bienes sustraídos en un mismo hecho delictivo (ej. el robo simultáneo de un vehículo y un teléfono celular).
+                      Nota metodológica: Las categorías de objetos contabilizan todos los bienes sustraídos. Por ello, el total de objetos registrados puede ser superior al total de delitos.
                     </span>
                   </div>
 
@@ -1468,7 +1468,7 @@ export default function Dashboard() {
                   <div className="bg-white p-10 rounded-[50px] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
                     <div className="flex justify-between items-center mb-10">
                       <div>
-                        <h2 className="text-xl font-black flex items-center gap-4 tracking-tight"><Search className="h-7 w-7 text-[#3C4C9A]" /> Inteligencia de Datos Textuales</h2>
+                        <h2 className="text-xl font-black flex items-center gap-4 tracking-tight"><Search className="h-7 w-7 text-[#3C4C9A]" /> Relatos textuales de las denuncias</h2>
                         {stats.topMO && stats.topMO !== "SIN CLASIFICAR" && stats.topMO !== "N/A" && stats.topMO !== "SIN DATOS" ? (
                           <p className="text-[11px] text-gray-500 font-bold mt-1.5 uppercase tracking-wider">
                             Mostrando Top 10 relatos asociados exclusivamente al Modus Operandi preponderante: <span className="text-[#3C4C9A] font-extrabold">{stats.topMO}</span>
