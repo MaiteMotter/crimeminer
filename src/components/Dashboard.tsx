@@ -80,7 +80,7 @@ function extractMobilityFromText(text: string, defaultVal: string = "S/D", isAgg
   }
 
   if (results.length === 0) {
-    results.push("Sin datos / En investigación");
+    results.push("En investigación");
   }
 
   // Quitar duplicados
@@ -91,7 +91,7 @@ function extractMobilityFromText(text: string, defaultVal: string = "S/D", isAgg
 function detectWeapon(row: any) {
   const val = getVal(row, "cmedio_empleado");
   const s = String(val || "").toUpperCase().trim();
-  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR") return "Sin datos / En investigación";
+  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR") return "En investigación";
   return s;
 }
 
@@ -273,22 +273,22 @@ function getVal(row: any, key: string) {
 function extractTimeSlot(val: any) {
   const s = String(val || "").toUpperCase().trim();
   if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN DATA" || s === "SIN DATOS" || s === "SIN CLASIFICAR" || s === "") {
-    return "Sin datos / En investigación";
+    return "En investigación";
   }
   
   // Eliminar cualquier asignación por defecto que fuerce horas simuladas
   if (s === "00:00" || s === "12:00" || s === "00:00:00" || s === "12:00:00") {
-    return "Sin datos / En investigación";
+    return "En investigación";
   }
   
   const match = s.match(/^(\d{1,2}):(\d{2})/);
-  if (!match) return "Sin datos / En investigación";
+  if (!match) return "En investigación";
   
   const hour = parseInt(match[1], 10);
   const minute = parseInt(match[2], 10);
   
   if (isNaN(hour) || hour < 0 || hour > 23 || isNaN(minute) || minute < 0 || minute > 59) {
-    return "Sin datos / En investigación";
+    return "En investigación";
   }
   
   if (hour >= 0 && hour < 6) return "MADRUGADA"; // 00:00 - 05:59
@@ -366,7 +366,7 @@ function sanitizeDescription(desc: string): string {
 function extractPlaceType(val: any) {
   const s = String(val || "").toUpperCase().trim();
   if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR" || s === "SIN DATA" || s === "SIN DATOS" || s === "VACIO" || s === "VACÍO" || s === "") {
-    return "Sin datos / En investigación";
+    return "En investigación";
   }
   
   // Preservación estricta de términos de alto valor analítico-situacional (evitando "OTROS")
@@ -516,7 +516,7 @@ function extractTacticalInsights(text: string, context: string) {
 // 12. EXTRACTOR DE CONTEXTO ESPECIAL (CCONTEXTO_TEMATICA)
 function extractSpecialContext(val: any) {
   const s = String(val || "").toUpperCase().trim();
-  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR" || s === "SIN DATA" || s === "SIN DATOS") return "Sin datos / En investigación";
+  if (!s || s === "S/D" || s === "UNDEFINED" || s === "NULL" || s === "SIN CLASIFICAR" || s === "SIN DATA" || s === "SIN DATOS") return "En investigación";
   return s;
 }
 
@@ -756,7 +756,7 @@ const VULNERABILITY_DESCRIPTIONS: Record<string, string> = {
   "VÍCTIMA EN SOLEDAD": "La ausencia absoluta de testigos u otros transeúntes facilita la dominación física del entorno e incrementa la sensación de impunidad del delincuente.",
   "MODALIDAD AL VOLEO / CALLEJERA": "Ataques de oportunidad sin planificación previa, dirigidos contra peatones vulnerables elegidos aleatoriamente durante su tránsito ordinario por la vía pública.",
   "SIN DATOS": "Cargue un archivo CSV para detectar y describir de forma automática el tipo de vulnerabilidad y la exposición del entorno de la víctima.",
-  "Sin datos / En investigación": "Cargue un archivo CSV para detectar y describir de forma automática el tipo de vulnerabilidad y la exposición del entorno de la víctima."
+  "En investigación": "Cargue un archivo CSV para detectar y describir de forma automática el tipo de vulnerabilidad y la exposición del entorno de la víctima."
 };
 
 const COERCION_DESCRIPTIONS: Record<string, string> = {
@@ -766,7 +766,7 @@ const COERCION_DESCRIPTIONS: Record<string, string> = {
   "SIMULACIÓN DE PORTE DE ARMA": "Engaño gestual o verbal, comúnmente llevando la mano a la cintura, para fingir portar un arma letal y acelerar el pánico y entrega de bienes.",
   "INTIMIDACIÓN VERBAL O PSICOLÓGICA": "Uso estricto de amenazas directas, gritos o mandatos hablados hostiles para doblegar la voluntad situacional sin presencia de armas físicas.",
   "SIN DATOS": "Cargue un archivo CSV para clasificar de manera automática los factores de coercion física o intimidación dominantes en las denuncias.",
-  "Sin datos / En investigación": "Cargue un archivo CSV para clasificar de manera automática los factores de coerción física o intimidación dominantes en las denuncias."
+  "En investigación": "Cargue un archivo CSV para clasificar de manera automática los factores de coerción física o intimidación dominantes en las denuncias."
 };
 
 const ESCAPE_DESCRIPTIONS: Record<string, string> = {
@@ -777,7 +777,7 @@ const ESCAPE_DESCRIPTIONS: Record<string, string> = {
   "FUGA PEATONAL": "Abandono inmediato de la escena a pie o corriendo, con alto índice de mimetización táctica o refugio rápido en edificaciones vecinas.",
   "FUGA EN VEHÍCULO CORRIENTE": "Escape ordenado asimilándose al sentido de circulación y velocidades estándar de la calle para que el rodado escape desapercibido en el parque automotor.",
   "SIN DATOS": "Cargue un archivo CSV para determinar de manera automática el tipo de transporte y patrones de coordinación empleados en la huida.",
-  "Sin datos / En investigación": "Cargue un archivo CSV para determinar de manera automática el tipo de transporte y patrones de coordinación empleados en la huida."
+  "En investigación": "Cargue un archivo CSV para determinar de manera automática el tipo de transporte y patrones de coordinación empleados en la huida."
 };
 
 export default function Dashboard() {
@@ -1096,7 +1096,7 @@ export default function Dashboard() {
         const normalized = arr.map((x: any) => {
           const s = String(x || "").trim();
           if (!s || ambiguousMobilities.includes(s.toUpperCase())) {
-            return "Sin datos / En investigación";
+            return "En investigación";
           }
           return s;
         });
@@ -1126,7 +1126,7 @@ export default function Dashboard() {
       let finalWeapon = c.weaponType;
       const ambiguousWeapons = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", ""];
       if (!finalWeapon || ambiguousWeapons.includes(String(finalWeapon).toUpperCase().trim())) {
-        finalWeapon = "Sin datos / En investigación";
+        finalWeapon = "En investigación";
       }
       weaponCounts[finalWeapon] = (weaponCounts[finalWeapon] || 0) + 1;
 
@@ -1134,7 +1134,7 @@ export default function Dashboard() {
       let finalContext = c.specialContext;
       const ambiguousContexts = ["S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", "SIN DATOS", "EN INVESTIGACIÓN", "EN INVESTIGACION", ""];
       if (!finalContext || ambiguousContexts.includes(String(finalContext).toUpperCase().trim())) {
-        finalContext = "Sin datos / En investigación";
+        finalContext = "En investigación";
       }
       contextCounts[finalContext] = (contextCounts[finalContext] || 0) + 1;
 
@@ -1145,7 +1145,7 @@ export default function Dashboard() {
         const normalized = arr.map((x: any) => {
           const s = String(x || "").trim();
           if (!s || ambiguous.includes(s.toUpperCase())) {
-            return "Sin datos / En investigación";
+            return "En investigación";
           }
           return s;
         });
@@ -1222,9 +1222,9 @@ export default function Dashboard() {
       pairs: Object.entries(pairs).sort((a: any, b: any) => b[1] - a[1]).slice(0, 6).map(([label, count]) => ({ label, count: count as number })),
       weapons: weaponArr,
       contexts: contextArr,
-      topVulnerability: Object.entries(vulnerabilityCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "Sin datos / En investigación")[0]?.[0] || "Sin datos / En investigación",
-      topEscape: Object.entries(escapeCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "Sin datos / En investigación")[0]?.[0] || "Sin datos / En investigación",
-      topCoercion: Object.entries(coercionCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "Sin datos / En investigación")[0]?.[0] || "Sin datos / En investigación",
+      topVulnerability: Object.entries(vulnerabilityCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "En investigación")[0]?.[0] || "En investigación",
+      topEscape: Object.entries(escapeCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "En investigación")[0]?.[0] || "En investigación",
+      topCoercion: Object.entries(coercionCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "En investigación")[0]?.[0] || "En investigación",
       fullZoneTable: Object.entries(nCounts).map(([name, count]: any) => ({ name, count })),
       otherBreakdown: Object.entries(otherDetailCounts).sort((a: any, b: any) => b[1] - a[1]).slice(0, 6).map(([name, count]) => ({ name, count: count as number }))
     };
@@ -1244,15 +1244,15 @@ export default function Dashboard() {
     let totalCount = filteredCrimesForStats.length;
 
     filteredCrimesForStats.forEach(c => {
-      let place = sanitizeEncodingError(c.placeType || "Sin datos / En investigación");
-      if (place === "ENTORNO NO ESPECIFICADO") place = "Sin datos / En investigación";
+      let place = sanitizeEncodingError(c.placeType || "En investigación");
+      if (place === "ENTORNO NO ESPECIFICADO") place = "En investigación";
 
-      let time = c.timeSlot || "Sin datos / En investigación";
-      if (time === "HORA NO ESPECIFICADA") time = "Sin datos / En investigación";
+      let time = c.timeSlot || "En investigación";
+      if (time === "HORA NO ESPECIFICADA") time = "En investigación";
 
       let obj = "BIEN NO ESPECIFICADO / OTROS";
       const objRaw = String(c.targetObject || "").toUpperCase().trim();
-      if (objRaw && objRaw !== "" && objRaw !== "S/D" && objRaw !== "NULL" && objRaw !== "UNDEFINED" && objRaw !== "OBJETO NO IDENTIFICADO" && objRaw !== "SIN CLASIFICAR" && objRaw !== "SIN DATOS" && objRaw !== "SIN DATA" && objRaw !== "SIN ESPECIFICAR" && objRaw !== "Sin datos / En investigación".toUpperCase()) {
+      if (objRaw && objRaw !== "" && objRaw !== "S/D" && objRaw !== "NULL" && objRaw !== "UNDEFINED" && objRaw !== "OBJETO NO IDENTIFICADO" && objRaw !== "SIN CLASIFICAR" && objRaw !== "SIN DATOS" && objRaw !== "SIN DATA" && objRaw !== "SIN ESPECIFICAR" && objRaw !== "En investigación".toUpperCase()) {
         obj = sanitizeEncodingError(c.targetObject);
       }
       
@@ -1332,7 +1332,7 @@ export default function Dashboard() {
           {[
             { id: 'overview', label: 'Vista General', icon: Activity },
             { id: 'text-mining', label: 'Minería de Texto', icon: List },
-            { id: 'mobility', label: 'Movilidad', icon: Navigation },
+            { id: 'mobility', label: 'Inteligencia Táctica', icon: Navigation },
             { id: 'map', label: 'Mapeo del delito', icon: MapIcon }
           ].map(t => (
             <button 
@@ -1564,7 +1564,7 @@ export default function Dashboard() {
                   </div>
 
                   <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-                    <h3 className="text-[10px] font-black uppercase text-gray-400 mb-10 tracking-[0.25em]">Tópicos Emergentes (LDA)</h3>
+                    <h3 className="text-[10px] font-black uppercase text-gray-400 mb-10 tracking-[0.25em]">Análisis de Tópicos Emergentes</h3>
                     <div className="space-y-8">
                       {textAnalysis.lda.map((t, i) => (
                         <div key={i} className="group">
@@ -1586,9 +1586,8 @@ export default function Dashboard() {
                     </div>
                     <div className="mt-8 pt-4 border-t border-gray-100 flex flex-col gap-2">
                       <p className="text-[9px] text-[#3C4C9A] font-black uppercase tracking-wider">*Mostrando los 3 tópicos principales</p>
-                      <p className="text-[9px] text-gray-400 italic">Los porcentajes representan la relevancia e incidencia individual de cada tópico sobre el total de la muestra de denuncias analizadas, no el acumulado de la muestra.</p>
-                      <p className="text-[9px] text-gray-500 font-medium italic mt-1 leading-normal">
-                        *Nota metodológica: El {textAnalysis.remainingPercentage}% restante de los incidentes se encuentra distribuido en otras combinaciones secundarias de lugar, horario y objeto.
+                      <p className="text-[9px] text-gray-500 font-medium italic leading-normal">
+                        Nota metodológica: Los porcentajes expresados indican la tasa de incidencia individual de cada patrón sobre el universo total de delitos analizados. El {textAnalysis.remainingPercentage}% restante de la muestra se distribuye de manera atomizada en combinaciones secundarias y dispersas de entorno físico, franja horaria y objeto material afectado, cuyas frecuencias absolutas no alcanzan los umbrales de representatividad estadística para ingresar al ranking principal.
                       </p>
                     </div>
                   </div>
