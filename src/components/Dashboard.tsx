@@ -586,7 +586,7 @@ function extractTargetObject(row: any) {
 // ============================================================================
 // 11. ANALISIS DE VULNERABILIDAD, ESCAPE Y COERCIÓN (DICCIONARIO TÁCTICO REFINADO)
 // ============================================================================
-function extractTacticalInsights(text: string, context: string, tipologia: string = "", modalidad: string = "") {
+function extractTacticalInsights(text: string, context: string, tipologia: string = "", modalidad: string = "", modusOperandi: string = "") {
   // Limpiamos acentos, eñes y caracteres raros para estandarizar la búsqueda
   const s = String(text || "")
     .normalize("NFD")
@@ -594,6 +594,11 @@ function extractTacticalInsights(text: string, context: string, tipologia: strin
     .toUpperCase();
     
   const c = String(context || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+
+  const mo = String(modusOperandi || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase();
@@ -618,47 +623,66 @@ function extractTacticalInsights(text: string, context: string, tipologia: strin
   const escape: string[] = [];
 
   // --- LÓGICA DE VULNERABILIDAD (ENTORNO / VÍCTIMA) ---
-  if (
-    c.includes("GENERO") || c.includes("VINCULAR") || c.includes("DOMESTICA") || c.includes("PAREJA") ||
-    t.includes("VINCULAR") || m.includes("VINCULAR") ||
-    t.includes("FAMILIAR") || m.includes("FAMILIAR")
-  ) {
-    vulnerability.push("ENTORNO VINCULAR / RUTINA");
-  }
-
-  // Palabra ambigua: PARADO, ESPERA, COLEC, BONDI, LINEA + Tipología/Modalidad/Relato
-  const hasAmbigTransport = s.includes('PARADA') || s.includes('ESPERANDO') || s.includes('COLECTIVO') || s.includes('BONDI') || s.includes('LINEA ') || s.includes('ESPERA') || s.includes('PARADO');
-  const contextTransport = t.includes("TRANSPORTE") || m.includes("TRANSPORTE") || t.includes("COLECTIVO") || m.includes("COLECTIVO") || t.includes("VIA PUBLICA") || m.includes("VIA PUBLICA");
-  if (hasAmbigTransport && (s.includes('PARADA') || s.includes('COLECTIVO') || s.includes('BONDI') || contextTransport)) {
-    vulnerability.push("ESPERA DE TRANSPORTE PÚBLICO");
-  }
-
-  // Palabra ambigua: CELU, TELF, FONO, MANDANDO, CEL + Tipología/Modalidad de tecnología/distracción
-  const hasAmbigDispositivos = s.includes('CELULAR') || s.includes('WHATSAPP') || s.includes('TELEFONO') || s.includes('FONO') || s.includes('PANTALLA') || s.includes('MANDANDO') || s.includes('CEL') || s.includes('CELU');
-  const contextDispositivos = t.includes("DISTRACCION") || m.includes("DISTRACCION") || t.includes("DISPOSITIVO") || m.includes("DISPOSITIVO") || t.includes("TECNOLOGIA") || m.includes("TECNOLOGIA");
-  if (hasAmbigDispositivos && (s.includes('CELULAR') || s.includes('TELEFONO') || contextDispositivos)) {
-    vulnerability.push("DISTRACCIÓN CON DISPOSITIVO");
-  }
-
-  // Falta de iluminación urbana: OSCURA, POCA LUZ, NOCHE + Tipología/Modalidad
-  const hasAmbigIluminacion = s.includes('OSCURA') || s.includes('POCA LUZ') || s.includes('ILUMINACION') || s.includes('NOCHE') || s.includes('SIN LUZ') || s.includes('APAGADO') || s.includes('OSCURO');
-  const contextNocturno = t.includes("NOCTURNO") || m.includes("NOCTURNO") || t.includes("OSCURIDAD") || m.includes("OSCURIDAD") || t.includes("FALTA DE LUZ") || m.includes("FALTA DE LUZ");
-  if (hasAmbigIluminacion && (s.includes('OSCURA') || s.includes('POCA LUZ') || s.includes('SIN LUZ') || contextNocturno)) {
-    vulnerability.push("FALTA DE ILUMINACIÓN URBANA");
-  }
-
-  // Ingreso / egreso domiciliario: PORTÓN, COCHERA, GARAJE, GUARDANDO, ABRIENDO, INGRESANDO + Tipología/Modalidad de domicilio/vivienda
-  const hasAmbigDomicilio = s.includes('PORTON') || s.includes('COCHERA') || s.includes('GARAJE') || s.includes('GUARDANDO') || s.includes('ABRIENDO') || s.includes('INGRESANDO') || s.includes('ENTRAR') || s.includes('SALIR');
-  const contextDomicilio = t.includes("DOMICILIO") || m.includes("DOMICILIO") || t.includes("RESIDENCIAL") || m.includes("RESIDENCIAL") || t.includes("VIVIENDA") || m.includes("VIVIENDA") || c.includes("DOMICILIO");
-  if (hasAmbigDomicilio && (s.includes('PORTON') || s.includes('COCHERA') || s.includes('GARAJE') || contextDomicilio)) {
+  
+  // >>> PRIORIDAD JERÁRQUICA: Si el modus operandi indica taxativamente ENTRADERA, confirma vulnerabilidad de inmediato
+  if (mo.includes("ENTRADERA")) {
     vulnerability.push("INGRESO / EGRESO DOMICILIARIO");
   }
 
+  if (
+    c.includes("GENERO") || c.includes("VINCULAR") || c.includes("DOMESTICA") || c.includes("PAREJA") ||
+    t.includes("VINCULAR") || m.includes("VINCULAR") ||
+    t.includes("FAMILIAR") || m.includes("FAMILIAR") ||
+    mo.includes("GENERO") || mo.includes("VINCULAR") || mo.includes("DOMESTICA") || mo.includes("PAREJA") || mo.includes("FAMILIAR")
+  ) {
+    if (!vulnerability.includes("ENTORNO VINCULAR / RUTINA")) {
+      vulnerability.push("ENTORNO VINCULAR / RUTINA");
+    }
+  }
+
+  // Palabra ambigua: PARADO, ESPERA, COLEC, BONDI, LINEA + Tipología/Modalidad/Relato/MO
+  const hasAmbigTransport = s.includes('PARADA') || s.includes('ESPERANDO') || s.includes('COLECTIVO') || s.includes('BONDI') || s.includes('LINEA ') || s.includes('ESPERA') || s.includes('PARADO') || mo.includes('PARADA') || mo.includes('ESPERANDO') || mo.includes('COLECTIVO') || mo.includes('BONDI') || mo.includes('ESPERA') || mo.includes('PARADO');
+  const contextTransport = t.includes("TRANSPORTE") || m.includes("TRANSPORTE") || t.includes("COLECTIVO") || m.includes("COLECTIVO") || t.includes("VIA PUBLICA") || m.includes("VIA PUBLICA") || mo.includes("TRANSPORTE") || mo.includes("COLECTIVO") || mo.includes("VIA PUBLICA");
+  if (hasAmbigTransport && (s.includes('PARADA') || s.includes('COLECTIVO') || s.includes('BONDI') || mo.includes('PARADA') || mo.includes('COLECTIVO') || mo.includes('BONDI') || contextTransport)) {
+    if (!vulnerability.includes("ESPERA DE TRANSPORTE PÚBLICO")) {
+      vulnerability.push("ESPERA DE TRANSPORTE PÚBLICO");
+    }
+  }
+
+  // Palabra ambigua: CELU, TELF, FONO, MANDANDO, CEL + Tipología/Modalidad/MO de tecnología/distracción
+  const hasAmbigDispositivos = s.includes('CELULAR') || s.includes('WHATSAPP') || s.includes('TELEFONO') || s.includes('FONO') || s.includes('PANTALLA') || s.includes('MANDANDO') || s.includes('CEL') || s.includes('CELU') || mo.includes('CELULAR') || mo.includes('WHATSAPP') || mo.includes('TELEFONO') || mo.includes('CEL') || mo.includes('CELU');
+  const contextDispositivos = t.includes("DISTRACCION") || m.includes("DISTRACCION") || t.includes("DISPOSITIVO") || m.includes("DISPOSITIVO") || t.includes("TECNOLOGIA") || m.includes("TECNOLOGIA") || mo.includes("DISTRACCION") || mo.includes("DISPOSITIVO") || mo.includes("TECNOLOGIA");
+  if (hasAmbigDispositivos && (s.includes('CELULAR') || s.includes('TELEFONO') || mo.includes('CELULAR') || mo.includes('TELEFONO') || contextDispositivos)) {
+    if (!vulnerability.includes("DISTRACCIÓN CON DISPOSITIVO")) {
+      vulnerability.push("DISTRACCIÓN CON DISPOSITIVO");
+    }
+  }
+
+  // Falta de iluminación urbana: OSCURA, POCA LUZ, NOCHE + Tipología/Modalidad/MO
+  const hasAmbigIluminacion = s.includes('OSCURA') || s.includes('POCA LUZ') || s.includes('ILUMINACION') || s.includes('NOCHE') || s.includes('SIN LUZ') || s.includes('APAGADO') || s.includes('OSCURO') || mo.includes('OSCURA') || mo.includes('POCA LUZ') || mo.includes('ILUMINACION') || mo.includes('NOCHE') || mo.includes('SIN LUZ') || mo.includes('OSCURO');
+  const contextNocturno = t.includes("NOCTURNO") || m.includes("NOCTURNO") || t.includes("OSCURIDAD") || m.includes("OSCURIDAD") || t.includes("FALTA DE LUZ") || m.includes("FALTA DE LUZ") || mo.includes("NOCTURNO") || mo.includes("OSCURIDAD") || mo.includes("FALTA DE LUZ");
+  if (hasAmbigIluminacion && (s.includes('OSCURA') || s.includes('POCA LUZ') || s.includes('SIN LUZ') || mo.includes('OSCURA') || mo.includes('POCA LUZ') || mo.includes('SIN LUZ') || contextNocturno)) {
+    if (!vulnerability.includes("FALTA DE ILUMINACIÓN URBANA")) {
+      vulnerability.push("FALTA DE ILUMINACIÓN URBANA");
+    }
+  }
+
+  // Ingreso / egreso domiciliario: PORTÓN, COCHERA, GARAJE, GUARDANDO, ABRIENDO, INGRESANDO + Tipología/Modalidad/MO de domicilio/vivienda
+  const hasAmbigDomicilio = s.includes('PORTON') || s.includes('COCHERA') || s.includes('GARAJE') || s.includes('GUARDANDO') || s.includes('ABRIENDO') || s.includes('INGRESANDO') || s.includes('ENTRAR') || s.includes('SALIR') || mo.includes('PORTON') || mo.includes('COCHERA') || mo.includes('GARAJE') || mo.includes('GUARDANDO') || mo.includes('ABRIENDO') || mo.includes('INGRESANDO') || mo.includes('ENTRAR') || mo.includes('SALIR');
+  const contextDomicilio = t.includes("DOMICILIO") || m.includes("DOMICILIO") || t.includes("RESIDENCIAL") || m.includes("RESIDENCIAL") || t.includes("VIVIENDA") || m.includes("VIVIENDA") || c.includes("DOMICILIO") || mo.includes("DOMICILIO") || mo.includes("RESIDENCIAL") || mo.includes("VIVIENDA");
+  if (hasAmbigDomicilio && (s.includes('PORTON') || s.includes('COCHERA') || s.includes('GARAJE') || mo.includes('PORTON') || mo.includes('COCHERA') || mo.includes('GARAJE') || contextDomicilio)) {
+    if (!vulnerability.includes("INGRESO / EGRESO DOMICILIARIO")) {
+      vulnerability.push("INGRESO / EGRESO DOMICILIARIO");
+    }
+  }
+
   // Víctima en soledad: SOLO, SOLA, SOLEDAD, CAMINABA ASILADA, NO HABIA NADIE
-  const hasAmbigSoledad = s.includes('SOLO') || s.includes('SOLA') || s.includes('SOLEDAD') || s.includes('CAMINABA') || s.includes('NO HABIA NADIE') || s.includes('PASANDO');
-  const contextSoledad = t.includes("SOLEDAD") || m.includes("SOLEDAD") || t.includes("DESPOBLADO") || m.includes("DESPOBLADO") || t.includes("DESOLADO") || m.includes("DESOLADO");
-  if (hasAmbigSoledad && (s.includes('SOLA') || s.includes('SOLO') || s.includes('SOLEDAD') || contextSoledad)) {
-    vulnerability.push("VÍCTIMA EN SOLEDAD");
+  const hasAmbigSoledad = s.includes('SOLO') || s.includes('SOLA') || s.includes('SOLEDAD') || s.includes('CAMINABA') || s.includes('NO HABIA NADIE') || s.includes('PASANDO') || mo.includes('SOLO') || mo.includes('SOLA') || mo.includes('SOLEDAD') || mo.includes('NO HABIA NADIE');
+  const contextSoledad = t.includes("SOLEDAD") || m.includes("SOLEDAD") || t.includes("DESPOBLADO") || m.includes("DESPOBLADO") || t.includes("DESOLADO") || m.includes("DESOLADO") || mo.includes("SOLEDAD") || mo.includes("DESPOBLADO") || mo.includes("DESOLADO");
+  if (hasAmbigSoledad && (s.includes('SOLA') || s.includes('SOLO') || s.includes('SOLEDAD') || mo.includes('SOLA') || mo.includes('SOLO') || mo.includes('SOLEDAD') || contextSoledad)) {
+    if (!vulnerability.includes("VÍCTIMA EN SOLEDAD")) {
+      vulnerability.push("VÍCTIMA EN SOLEDAD");
+    }
   }
 
   if (vulnerability.length === 0) {
@@ -666,32 +690,48 @@ function extractTacticalInsights(text: string, context: string, tipologia: strin
   }
 
   // --- LÓGICA DE COERCIÓN (MÉTODO DOMINANTE) ---
-  // Violencia física: CULATAZO, GOLPE, PEGÓ, PATADA, EMPUJO, TIRO AL PISO, PEGAR, FORZAR
-  const hasAmbigFisica = s.includes('CULATAZO') || s.includes('GOLPE') || s.includes('PEGÓ') || s.includes('PEGO') || s.includes('PATADA') || s.includes('EMPUJO') || s.includes('EMPUJAR') || s.includes('TIRO AL PISO') || s.includes('PEGAR') || s.includes('FORZAR');
-  const contextFisica = t.includes("VIOLENCIA FISICA") || m.includes("VIOLENCIA FISICA") || t.includes("GOLPES") || m.includes("GOLPES") || t.includes("LESIONES") || m.includes("LESIONES") || t.includes("VIOLENCIA EXPLICITA") || m.includes("VIOLENCIA EXPLICITA");
-  if (hasAmbigFisica && (s.includes('GOLPE') || s.includes('PEGÓ') || s.includes('PATADA') || s.includes('EMPUJO') || contextFisica)) {
-    coercion.push("VIOLENCIA FÍSICA EXPLÍCITA");
-  }
-
-  // Arma de fuego: ARMA, FIERRO, PISTOLA, REVOLVER, DISPARO, TIRO
-  const hasAmbigFuego = s.includes('ARMA') || s.includes('FIERRO') || s.includes('PISTOLA') || s.includes('REVOLVER') || s.includes('DISPARO') || s.includes('TIRO');
-  const contextFuego = t.includes("ARMA DE FUEGO") || m.includes("ARMA DE FUEGO") || t.includes("PISTOLA") || m.includes("PISTOLA") || t.includes("REVOLVER") || m.includes("REVOLVER") || t.includes("DISPAROS") || m.includes("DISPAROS");
-  if (hasAmbigFuego && (s.includes('PISTOLA') || s.includes('REVOLVER') || s.includes('DISPARO') || s.includes('FIERRO') || contextFuego)) {
+  
+  // >>> PRIORIDAD JERÁRQUICA: Modus operandi explícitos actúan como validadores de máxima certeza para armas
+  if (mo.includes("MOTOCHORROS CON ARMA") || mo.includes("ASALTO A MANO ARMADA") || mo.includes("ARMA DE FUEGO")) {
     coercion.push("EXHIBICIÓN / USO DE ARMA DE FUEGO");
-  }
-
-  // Arma blanca: CUCHILLO, PUNTA, SEVILLANA, DESTORNILLADOR, FACO, CORTAR, PUNZÓ, PINCHÓ
-  const hasAmbigBlanca = s.includes('CUCHILLO') || s.includes('PUNTA') || s.includes('SEVILLANA') || s.includes('DESTORNILLADOR') || s.includes('FACO') || s.includes('CORTAR') || s.includes('PUNZÓ') || s.includes('PUNZO') || s.includes('PINCHO');
-  const contextBlanca = t.includes("ARMA BLANCA") || m.includes("ARMA BLANCA") || t.includes("PUNZANTE") || m.includes("PUNZANTE") || t.includes("CUCHILLO") || m.includes("CUCHILLO");
-  if (hasAmbigBlanca && (s.includes('CUCHILLO') || s.includes('PUNTA') || s.includes('FACO') || contextBlanca)) {
+  } else if (mo.includes("ARMA BLANCA") || mo.includes("CUCHILLO")) {
     coercion.push("USO DE ARMA BLANCA / PUNZANTE");
   }
 
+  // Violencia física: CULATAZO, GOLPE, PEGÓ, PATADA, EMPUJO, TIRO AL PISO, PEGAR, FORZAR
+  const hasAmbigFisica = s.includes('CULATAZO') || s.includes('GOLPE') || s.includes('PEGÓ') || s.includes('PEGO') || s.includes('PATADA') || s.includes('EMPUJO') || s.includes('EMPUJAR') || s.includes('TIRO AL PISO') || s.includes('PEGAR') || s.includes('FORZAR') || mo.includes('CULATAZO') || mo.includes('GOLPE') || mo.includes('PEGO') || mo.includes('PATADA') || mo.includes('EMPUJO') || mo.includes('FORZAR');
+  const contextFisica = t.includes("VIOLENCIA FISICA") || m.includes("VIOLENCIA FISICA") || t.includes("GOLPES") || m.includes("GOLPES") || t.includes("LESIONES") || m.includes("LESIONES") || t.includes("VIOLENCIA EXPLICITA") || m.includes("VIOLENCIA EXPLICITA") || mo.includes("VIOLENCIA FISICA") || mo.includes("GOLPES") || mo.includes("LESIONES") || mo.includes("VIOLENCIA EXPLICITA");
+  if (hasAmbigFisica && (s.includes('GOLPE') || s.includes('PEGÓ') || s.includes('PATADA') || s.includes('EMPUJO') || mo.includes('GOLPE') || mo.includes('PATADA') || mo.includes('EMPUJO') || contextFisica)) {
+    if (!coercion.includes("VIOLENCIA FÍSICA EXPLÍCITA")) {
+      coercion.push("VIOLENCIA FÍSICA EXPLÍCITA");
+    }
+  }
+
+  // Arma de fuego: ARMA, FIERRO, PISTOLA, REVOLVER, DISPARO, TIRO
+  const hasAmbigFuego = s.includes('ARMA') || s.includes('FIERRO') || s.includes('PISTOLA') || s.includes('REVOLVER') || s.includes('DISPARO') || s.includes('TIRO') || mo.includes('ARMA') || mo.includes('FIERRO') || mo.includes('PISTOLA') || mo.includes('REVOLVER') || mo.includes('DISPARO') || mo.includes('TIRO');
+  const contextFuego = t.includes("ARMA DE FUEGO") || m.includes("ARMA DE FUEGO") || t.includes("PISTOLA") || m.includes("PISTOLA") || t.includes("REVOLVER") || m.includes("REVOLVER") || t.includes("DISPAROS") || m.includes("DISPAROS") || mo.includes("ARMA DE FUEGO") || mo.includes("PISTOLA") || mo.includes("REVOLVER") || mo.includes("DISPAROS");
+  if (hasAmbigFuego && (s.includes('PISTOLA') || s.includes('REVOLVER') || s.includes('DISPARO') || s.includes('FIERRO') || mo.includes('PISTOLA') || mo.includes('REVOLVER') || mo.includes('DISPARO') || mo.includes('FIERRO') || contextFuego)) {
+    if (!coercion.includes("EXHIBICIÓN / USO DE ARMA DE FUEGO")) {
+      coercion.push("EXHIBICIÓN / USO DE ARMA DE FUEGO");
+    }
+  }
+
+  // Arma blanca: CUCHILLO, PUNTA, SEVILLANA, DESTORNILLADOR, FACO, CORTAR, PUNZÓ, PINCHÓ
+  const hasAmbigBlanca = s.includes('CUCHILLO') || s.includes('PUNTA') || s.includes('SEVILLANA') || s.includes('DESTORNILLADOR') || s.includes('FACO') || s.includes('CORTAR') || s.includes('PUNZÓ') || s.includes('PUNZO') || s.includes('PINCHO') || mo.includes('CUCHILLO') || mo.includes('PUNTA') || mo.includes('SEVILLANA') || mo.includes('DESTORNILLADOR') || mo.includes('FACO') || mo.includes('CORTAR');
+  const contextBlanca = t.includes("ARMA BLANCA") || m.includes("ARMA BLANCA") || t.includes("PUNZANTE") || m.includes("PUNZANTE") || t.includes("CUCHILLO") || m.includes("CUCHILLO") || mo.includes("ARMA BLANCA") || mo.includes("PUNZANTE") || mo.includes("CUCHILLO");
+  if (hasAmbigBlanca && (s.includes('CUCHILLO') || s.includes('PUNTA') || s.includes('FACO') || mo.includes('CUCHILLO') || mo.includes('PUNTA') || mo.includes('FACO') || contextBlanca)) {
+    if (!coercion.includes("USO DE ARMA BLANCA / PUNZANTE")) {
+      coercion.push("USO DE ARMA BLANCA / PUNZANTE");
+    }
+  }
+
   // Simulacion de porte: SIMULO, MANO EN LA CINTURA, DECIA QUE TENIA
-  const hasAmbigSimulacion = s.includes('SIMULO') || s.includes('MANO EN LA CINTURA') || s.includes('DECIA QUE TENIA') || s.includes('TENÍA ARMA') || s.includes('ADVERTIA');
-  const contextSimulacion = t.includes("SIMULACION") || m.includes("SIMULACION") || t.includes("PORTE DE ARMA") || m.includes("PORTE DE ARMA") || t.includes("AMENAZA SIMULADA") || m.includes("AMENAZA SIMULADA");
-  if (hasAmbigSimulacion && (s.includes('SIMULO') || s.includes('MANO EN LA CINTURA') || contextSimulacion)) {
-    coercion.push("SIMULACIÓN DE PORTE DE ARMA");
+  const hasAmbigSimulacion = s.includes('SIMULO') || s.includes('MANO EN LA CINTURA') || s.includes('DECIA QUE TENIA') || s.includes('TENÍA ARMA') || s.includes('ADVERTIA') || mo.includes('SIMULO') || mo.includes('MANO EN LA CINTURA') || mo.includes('DECIA QUE TENIA') || mo.includes('TENIA ARMA') || mo.includes('ADVERTIA');
+  const contextSimulacion = t.includes("SIMULACION") || m.includes("SIMULACION") || t.includes("PORTE DE ARMA") || m.includes("PORTE DE ARMA") || t.includes("AMENAZA SIMULADA") || m.includes("AMENAZA SIMULADA") || mo.includes("SIMULACION") || mo.includes("PORTE DE ARMA") || mo.includes("AMENAZA SIMULADA");
+  if (hasAmbigSimulacion && (s.includes('SIMULO') || s.includes('MANO EN LA CINTURA') || mo.includes('SIMULO') || mo.includes('MANO EN LA CINTURA') || contextSimulacion)) {
+    if (!coercion.includes("SIMULACIÓN DE PORTE DE ARMA")) {
+      coercion.push("SIMULACIÓN DE PORTE DE ARMA");
+    }
   }
 
   if (coercion.length === 0) {
@@ -699,39 +739,57 @@ function extractTacticalInsights(text: string, context: string, tipologia: strin
   }
 
   // --- LÓGICA DE ESCAPE (PATRÓN DE COORDINACIÓN) ---
+  
+  // >>> PRIORIDAD JERÁRQUICA: Calibración estricta de vectores de movilidad mediante cmodus_operandi
+  if (mo.includes("MOTOCHORROS") || mo.includes("FUGADOS EN AUTO") || mo.includes("VEHICULO") || mo.includes("AUTOMOVIL")) {
+    escape.push("FUGA A ALTA VELOCIDAD");
+  } else if (mo.includes("A PIE") || mo.includes("PEATONAL") || mo.includes("CORRIENDO")) {
+    escape.push("FUGA PEATONAL");
+  }
+
   // Contramano: CONTRAMANO, SENTIDO CONTRARIO, MANO INVERSA
-  const hasAmbigContramano = s.includes('CONTRAMANO') || s.includes('SENTIDO CONTRARIO') || s.includes('MANO INVERSA') || s.includes('CONTRARIO') || s.includes('INVERSO');
-  const contextContramano = t.includes("CONTRAMANO") || m.includes("CONTRAMANO") || t.includes("SENTIDO CONTRARIO") || m.includes("SENTIDO CONTRARIO") || t.includes("INVERSO") || m.includes("INVERSO");
-  if (hasAmbigContramano && (s.includes('CONTRAMANO') || s.includes('SENTIDO CONTRARIO') || contextContramano)) {
-    escape.push("ESCAPE EN CONTRAMANO");
+  const hasAmbigContramano = s.includes('CONTRAMANO') || s.includes('SENTIDO CONTRARIO') || s.includes('MANO INVERSA') || s.includes('CONTRARIO') || s.includes('INVERSO') || mo.includes('CONTRAMANO') || mo.includes('SENTIDO CONTRARIO') || mo.includes('MANO INVERSA') || mo.includes('CONTRARIO') || mo.includes('INVERSO');
+  const contextContramano = t.includes("CONTRAMANO") || m.includes("CONTRAMANO") || t.includes("SENTIDO CONTRARIO") || m.includes("SENTIDO CONTRARIO") || t.includes("INVERSO") || m.includes("INVERSO") || mo.includes("CONTRAMANO") || mo.includes("SENTIDO CONTRARIO") || mo.includes("MANO INVERSA");
+  if (hasAmbigContramano && (s.includes('CONTRAMANO') || s.includes('SENTIDO CONTRARIO') || mo.includes('CONTRAMANO') || mo.includes('SENTIDO CONTRARIO') || contextContramano)) {
+    if (!escape.includes("ESCAPE EN CONTRAMANO")) {
+      escape.push("ESCAPE EN CONTRAMANO");
+    }
   }
 
   // Zonas intrincadas: PASILLO, PASAJES, ASENTAMIENTO, VILLA, CALLEJÓN
-  const hasAmbigIntrincado = s.includes('PASILLO') || s.includes('PASAJES') || s.includes('ASENTAMIENTO') || s.includes('VILLA') || s.includes('CALLEJON') || s.includes('CALLEJÓN') || s.includes('PASAJE');
-  const contextIntrincado = t.includes("ZONA INTRINCADA") || m.includes("ZONA INTRINCADA") || t.includes("ASENTAMIENTO") || m.includes("ASENTAMIENTO") || t.includes("VILLA") || m.includes("VILLA") || t.includes("PASILLO") || m.includes("PASILLO");
-  if (hasAmbigIntrincado && (s.includes('PASILLO') || s.includes('ASENTAMIENTO') || s.includes('VILLA') || contextIntrincado)) {
-    escape.push("FUGA POR ZONAS INTRINCADAS");
+  const hasAmbigIntrincado = s.includes('PASILLO') || s.includes('PASAJES') || s.includes('ASENTAMIENTO') || s.includes('VILLA') || s.includes('CALLEJON') || s.includes('CALLEJÓN') || s.includes('PASAJE') || mo.includes('PASILLO') || mo.includes('PASAJES') || mo.includes('ASENTAMIENTO') || mo.includes('VILLA') || mo.includes('CALLEJON') || mo.includes('PASAJE');
+  const contextIntrincado = t.includes("ZONA INTRINCADA") || m.includes("ZONA INTRINCADA") || t.includes("ASENTAMIENTO") || m.includes("ASENTAMIENTO") || t.includes("VILLA") || m.includes("VILLA") || t.includes("PASILLO") || m.includes("PASILLO") || mo.includes("ZONA INTRINCADA") || mo.includes("ASENTAMIENTO") || mo.includes("VILLA") || mo.includes("PASILLO");
+  if (hasAmbigIntrincado && (s.includes('PASILLO') || s.includes('ASENTAMIENTO') || s.includes('VILLA') || mo.includes('PASILLO') || mo.includes('ASENTAMIENTO') || mo.includes('VILLA') || contextIntrincado)) {
+    if (!escape.includes("FUGA POR ZONAS INTRINCADAS")) {
+      escape.push("FUGA POR ZONAS INTRINCADAS");
+    }
   }
 
   // Alta velocidad: VELOCIDAD, RAUDAMENTE, PIQUE, ACELERO, MANGO, VELOZ
-  const hasAmbigVelocidad = s.includes('VELOCIDAD') || s.includes('RAUDAMENTE') || s.includes('PIQUE') || s.includes('ACELERO') || s.includes('MANGO') || s.includes('VELOZ') || s.includes('RAPIDO');
-  const contextVelocidad = t.includes("ALTA VELOCIDAD") || m.includes("ALTA VELOCIDAD") || t.includes("ACELERADO") || m.includes("ACELERADO") || t.includes("ESCAPE RAPIDO") || m.includes("ESCAPE RAPIDO");
-  if (hasAmbigVelocidad && (s.includes('VELOCIDAD') || s.includes('RAUDAMENTE') || s.includes('ACELERO') || contextVelocidad)) {
-    escape.push("FUGA A ALTA VELOCIDAD");
+  const hasAmbigVelocidad = s.includes('VELOCIDAD') || s.includes('RAUDAMENTE') || s.includes('PIQUE') || s.includes('ACELERO') || s.includes('MANGO') || s.includes('VELOZ') || s.includes('RAPIDO') || mo.includes('VELOCIDAD') || mo.includes('RAUDAMENTE') || mo.includes('PIQUE') || mo.includes('ACELERO') || mo.includes('VELOZ') || mo.includes('RAPIDO');
+  const contextVelocidad = t.includes("ALTA VELOCIDAD") || m.includes("ALTA VELOCIDAD") || t.includes("ACELERADO") || m.includes("ACELERADO") || t.includes("ESCAPE RAPIDO") || m.includes("ESCAPE RAPIDO") || mo.includes("ALTA VELOCIDAD") || mo.includes("ACELERADO") || mo.includes("ESCAPE RAPIDO");
+  if (hasAmbigVelocidad && (s.includes('VELOCIDAD') || s.includes('RAUDAMENTE') || s.includes('ACELERO') || mo.includes('VELOCIDAD') || mo.includes('RAUDAMENTE') || mo.includes('ACELERO') || contextVelocidad)) {
+    if (!escape.includes("FUGA A ALTA VELOCIDAD")) {
+      escape.push("FUGA A ALTA VELOCIDAD");
+    }
   }
 
   // Via rapida: COLECTOR, AUTOPISTA, AVENIDA, CIRCUNVALACION, COLECTORA, RUTA
-  const hasAmbigRapida = s.includes('COLECTOR') || s.includes('AUTOPISTA') || s.includes('AVENIDA') || s.includes('CIRCUNVALACION') || s.includes('COLECTORA') || s.includes('RUTA');
-  const contextRapida = t.includes("VIA RAPIDA") || m.includes("VIA RAPIDA") || t.includes("AUTOPISTA") || m.includes("AUTOPISTA") || t.includes("AVENIDA") || m.includes("AVENIDA") || t.includes("CIRCUNVALACION") || m.includes("CIRCUNVALACION");
-  if (hasAmbigRapida && (s.includes('AUTOPISTA') || s.includes('AVENIDA') || s.includes('CIRCUNVALACION') || contextRapida)) {
-    escape.push("FUGA POR VÍA RÁPIDA");
+  const hasAmbigRapida = s.includes('COLECTOR') || s.includes('AUTOPISTA') || s.includes('AVENIDA') || s.includes('CIRCUNVALACION') || s.includes('COLECTORA') || s.includes('RUTA') || mo.includes('COLECTOR') || mo.includes('AUTOPISTA') || mo.includes('AVENIDA') || mo.includes('CIRCUNVALACION') || mo.includes('COLECTORA') || mo.includes('RUTA');
+  const contextRapida = t.includes("VIA RAPIDA") || m.includes("VIA RAPIDA") || t.includes("AUTOPISTA") || m.includes("AUTOPISTA") || t.includes("AVENIDA") || m.includes("AVENIDA") || t.includes("CIRCUNVALACION") || m.includes("CIRCUNVALACION") || mo.includes("VIA RAPIDA") || mo.includes("AUTOPISTA") || mo.includes("AVENIDA") || mo.includes("CIRCUNVALACION");
+  if (hasAmbigRapida && (s.includes('AUTOPISTA') || s.includes('AVENIDA') || s.includes('CIRCUNVALACION') || mo.includes('AUTOPISTA') || mo.includes('AVENIDA') || mo.includes('CIRCUNVALACION') || contextRapida)) {
+    if (!escape.includes("FUGA POR VÍA RÁPIDA")) {
+      escape.push("FUGA POR VÍA RÁPIDA");
+    }
   }
 
   // Peatonal: A PIE, CORRIENDO, CORRIO, PI disparó
-  const hasAmbigPeatonal = s.includes('A PIE') || s.includes('CORRIENDO') || s.includes('CORRIO') || s.includes('CORRIÓ') || s.includes('PI ');
-  const contextPeatonal = t.includes("PEATONAL") || m.includes("PEATONAL") || t.includes("A PIE") || m.includes("A PIE") || t.includes("CORRIENDO") || m.includes("CORRIENDO");
-  if (hasAmbigPeatonal && (s.includes('A PIE') || s.includes('CORRIENDO') || s.includes('CORRIO') || contextPeatonal)) {
-    escape.push("FUGA PEATONAL");
+  const hasAmbigPeatonal = s.includes('A PIE') || s.includes('CORRIENDO') || s.includes('CORRIO') || s.includes('CORRIÓ') || s.includes('PI ') || mo.includes('A PIE') || mo.includes('CORRIENDO') || mo.includes('CORRIO') || mo.includes('CORRIÓ');
+  const contextPeatonal = t.includes("PEATONAL") || m.includes("PEATONAL") || t.includes("A PIE") || m.includes("A PIE") || t.includes("CORRIENDO") || m.includes("CORRIENDO") || mo.includes("PEATONAL") || mo.includes("A PIE") || mo.includes("CORRIENDO");
+  if (hasAmbigPeatonal && (s.includes('A PIE') || s.includes('CORRIENDO') || s.includes('CORRIO') || mo.includes('A PIE') || mo.includes('CORRIENDO') || mo.includes('CORRIO') || contextPeatonal)) {
+    if (!escape.includes("FUGA PEATONAL")) {
+      escape.push("FUGA PEATONAL");
+    }
   }
 
   if (escape.length === 0) {
@@ -1315,7 +1373,7 @@ export default function Dashboard() {
           const aggressorMobility = extractMobilityFromText(description, aggMob, true);
           const victimMobility = extractMobilityFromText(description, vicMob, false);
 
-          const tactical = extractTacticalInsights(description, context, contextTipologia, contextModalidad);
+          const tactical = extractTacticalInsights(description, context, contextTipologia, contextModalidad, getVal(row, "cmodus_operandi"));
 
           const idVal = (getVal(row, "id_actuacion_delito") || getVal(row, "id_principal") || getVal(row, "id_denuncia") || Math.random().toString()).trim();
 
@@ -2607,3 +2665,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
+
