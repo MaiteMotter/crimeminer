@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Papa from 'papaparse';
+import '../leaflet-setup';
 import * as L from 'leaflet';
 import 'leaflet.heat';
 import * as turf from '@turf/turf';
@@ -910,9 +911,11 @@ function PureLeafletMap({
           geoLayer.current = L.geoJSON(geoData, {
             style: (feature: any) => {
               const barrioName = getBarrioNameFromProps(feature?.properties);
-              // Buscamos en la tabla COMPLETA de stats
-              const match = (stats.fullZoneTable || stats.zoneTable).find((z: any) => normalizeName(z.name) === barrioName);
-              const count = match?.count || 0;
+              const localidad = feature?.properties?.localidad || feature?.properties?.Localidad || "";
+              const polyUniqueId = `${normalizeName(localidad)}|${normalizeName(barrioName)}`;
+              
+              // Buscamos en el conteo de polígonos únicos
+              const count = stats.polyCounts?.[polyUniqueId] || 0;
               
               const fill = getChoroplethColor(count);
 
@@ -926,10 +929,11 @@ function PureLeafletMap({
             },
             onEachFeature: (feature: any, layer: any) => {
               const barrioName = getBarrioNameFromProps(feature?.properties);
-              const match = (stats.fullZoneTable || stats.zoneTable).find((z: any) => normalizeName(z.name) === barrioName);
-              const count = match?.count || 0;
-              const fill = getChoroplethColor(count); 
               const localidad = feature?.properties?.localidad || feature?.properties?.Localidad || "";
+              const polyUniqueId = `${normalizeName(localidad)}|${normalizeName(barrioName)}`;
+              
+              const count = stats.polyCounts?.[polyUniqueId] || 0;
+              const fill = getChoroplethColor(count); 
               const localidadBadge = localidad ? `<span style="background: #e0e7ff; color: #4f46e5; font-size: 8px; font-weight: 800; padding: 2px 6px; border-radius: 6px; text-transform: uppercase; margin-bottom: 4px; display: inline-block;">${localidad}</span>` : "";
               layer.bindPopup(`
                 <div style="font-family: inherit; padding: 4px;">
@@ -1122,12 +1126,23 @@ export default function Dashboard() {
         
         const fetchPromises = uniqueFilenames.map(async (filename) => {
           const path = `/gepgeojson/${filename}`;
+          const cityConfig = CITIES.find(c => c.filename === filename);
+          const cityName = cityConfig ? cityConfig.name : "";
           try {
             const res = await fetch(path);
             if (res.ok) {
               const data = await res.json();
               if (data && Array.isArray(data.features)) {
-                return data.features;
+                return data.features.map((feature: any) => {
+                  const props = feature.properties || {};
+                  return {
+                    ...feature,
+                    properties: {
+                      ...props,
+                      localidad: props.localidad || props.Localidad || cityName
+                    }
+                  };
+                });
               }
             }
           } catch (err) {
@@ -1186,6 +1201,7 @@ export default function Dashboard() {
         let mappedZone = "Sin Cuadrante Asignado"; // Reset para cada punto
         let isJoined = false;
         let cityVal = "";
+        let polyUniqueId = "";
 
         if (c.lat && c.lng && c.lat !== 0 && c.lng !== 0) {
           try {
@@ -1194,6 +1210,7 @@ export default function Dashboard() {
               if (turf.booleanPointInPolygon(pt, feature)) {
                 mappedZone = getBarrioNameFromProps(feature.properties);
                 cityVal = feature.properties?.localidad || feature.properties?.Localidad || "";
+                polyUniqueId = `${normalizeName(cityVal)}|${normalizeName(mappedZone)}`;
                 isJoined = true;
                 joinedCount++;
                 break;
@@ -1212,6 +1229,7 @@ export default function Dashboard() {
           ...c, 
           neighborhood: mappedZone, // Forzamos el uso de la zona del mapa
           city: cityVal,
+          polygonUniqueId: isJoined ? polyUniqueId : null,
           isSpatialJoined: true 
         };
       });
@@ -1400,17 +1418,11 @@ export default function Dashboard() {
   const cityRanking = React.useMemo(() => {
     const counts: Record<string, number> = {};
     filteredCrimes.forEach(c => {
-      // Priorizar la ciudad asignada por el spatial join
-      let city = c.city;
-      
-      // Fallback a campos raw si no fue mapeado por el spatial join
-      if (!city || city === "") {
-        const raw = c._rawRow || {};
-        city = getVal(raw, "clocalidad") || getVal(raw, "nlocalidad") || getVal(raw, "localidad") || getVal(raw, "ciudad") || getVal(raw, "zone") || c.zone || "";
-      }
+      const raw = c._rawRow || {};
+      const city = getVal(raw, "cnombre_ciudad");
       
       const cleanCity = String(city || "").trim();
-      if (cleanCity && cleanCity !== "S/D" && cleanCity !== "SIN DATOS" && cleanCity !== "NULL" && cleanCity !== "Resto de la Provincia" && cleanCity !== "Sin Cuadrante Asignado") {
+      if (cleanCity && cleanCity !== "" && cleanCity !== "S/D" && cleanCity !== "SIN DATOS" && cleanCity !== "NULL" && cleanCity !== "Resto de la Provincia" && cleanCity !== "Sin Cuadrante Asignado") {
         let normalized = cleanCity.toUpperCase();
         if (normalized === "CAÑADA DE GOMEZ") normalized = "CAÑADA DE GÓMEZ";
         if (normalized === "EL TREBOL") normalized = "EL TRÉBOL";
@@ -1427,17 +1439,8 @@ export default function Dashboard() {
         }).join(' ');
         
         counts[titleCased] = (counts[titleCased] || 0) + 1;
-      } else {
-        const barrio = c.neighborhood;
-        if (barrio && barrio !== "PENDIENTE DE ANÁLISIS GEOGRÁFICO" && barrio !== "FUERA DE JURISDICCIÓN" && barrio !== "DESCONOCIDO" && barrio !== "Sin Cuadrante Asignado" && barrio !== "Resto de la Provincia") {
-          counts["Rosario"] = (counts["Rosario"] || 0) + 1;
-        }
       }
     });
-
-    if (Object.keys(counts).length === 0 && filteredCrimes.length > 0) {
-      counts["Rosario"] = filteredCrimes.length;
-    }
 
     return Object.entries(counts)
       .map(([name, count]) => ({ name, count }))
@@ -1517,7 +1520,8 @@ export default function Dashboard() {
       mobility: [], pairs: [], weapons: [], contexts: [], topTangible: "N/A",
       topVulnerability: "SIN DATOS", topCoercion: "SIN DATOS", topEscape: "SIN DATOS",
       contextTipologias: [], contextModalidades: [],
-      modusOperandiStats: []
+      modusOperandiStats: [],
+      polyCounts: {}
     };
     if (filteredCrimesForStats.length === 0) return defaultStats;
 
@@ -1533,11 +1537,24 @@ export default function Dashboard() {
     const vulnerabilityCounts: any = {};
     const escapeCounts: any = {};
     const coercionCounts: any = {};
+    const polyCounts: any = {};
 
     filteredCrimesForStats.forEach(c => {
+      // Registrar el conteo del polígono único de Spatial Join
+      if (c.polygonUniqueId) {
+        polyCounts[c.polygonUniqueId] = (polyCounts[c.polygonUniqueId] || 0) + 1;
+      }
+
       const b = c.neighborhood;
       nCounts[b] = (nCounts[b] || 0) + 1;
-      if (!nDetails[b]) nDetails[b] = { objs: {}, brands: {} };
+      if (!nDetails[b]) nDetails[b] = { objs: {}, brands: {}, cities: {} };
+
+      // Obtener la localidad basada en la columna cnombre_ciudad
+      const rawCity = getVal(c._rawRow, "cnombre_ciudad") || c.city || "";
+      const cityClean = String(rawCity).trim().toUpperCase();
+      if (cityClean && cityClean !== "S/D" && cityClean !== "NULL" && cityClean !== "UNDEFINED" && cityClean !== "SIN DATOS") {
+        nDetails[b].cities[cityClean] = (nDetails[b].cities[cityClean] || 0) + 1;
+      }
 
       // Consumimos el objeto único por fila ya procesado por el extractor
       let obj = c.targetObject || "OBJETO NO IDENTIFICADO";
@@ -1697,7 +1714,10 @@ export default function Dashboard() {
         const topObjEntry = rawObjEntries.find(x => !isObjGeneric(x[0]));
         const objsStr = topObjEntry ? topObjEntry[0].replace(/VEHICULO\s*1\s*:\s*/gi, "").trim() : "";
 
-        return { name, count, brands: brandsStr, objs: objsStr };
+        const rawCityEntries = Object.entries(nDetails[name].cities || {}).sort((a: any, b: any) => b[1] - a[1]);
+        const cityStr = rawCityEntries[0]?.[0] || "S/D";
+
+        return { name, count, brands: brandsStr, objs: objsStr, city: cityStr };
       }),
       mobility: [],
       pairs: [],
@@ -1709,7 +1729,8 @@ export default function Dashboard() {
       topVulnerability: Object.entries(vulnerabilityCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "En investigación")[0]?.[0] || "En investigación",
       topEscape: Object.entries(escapeCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "En investigación")[0]?.[0] || "En investigación",
       topCoercion: Object.entries(coercionCounts).sort((a: any, b: any) => b[1] - a[1]).filter(x => x[0] !== "En investigación")[0]?.[0] || "En investigación",
-      fullZoneTable: Object.entries(nCounts).map(([name, count]: any) => ({ name, count }))
+      fullZoneTable: Object.entries(nCounts).map(([name, count]: any) => ({ name, count })),
+      polyCounts
     };
   }, [filteredCrimesForStats]);
 
@@ -2009,6 +2030,7 @@ export default function Dashboard() {
                         <thead className="text-[10px] uppercase text-gray-400 border-b border-gray-100 pb-4">
                           <tr>
                             <th className="pb-5 font-black tracking-widest text-[#64748b] whitespace-nowrap">cuadrante / zona</th>
+                            <th className="pb-5 font-black tracking-widest text-[#64748b] whitespace-nowrap">localidad</th>
                             <th className="pb-5 font-black tracking-widest">Objeto Top</th>
                             <th className="pb-5 font-black tracking-widest text-right">Cantidad</th>
                           </tr>
@@ -2018,6 +2040,9 @@ export default function Dashboard() {
                             <tr key={i} className="group hover:bg-gray-50/50 transition-colors">
                               <td className="py-5">
                                 <p className="text-[11px] font-black text-[#1e293b] uppercase tracking-tight">{row.name}</p>
+                              </td>
+                              <td className="py-5">
+                                <span className="bg-indigo-50 text-indigo-600 border border-indigo-100/50 px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-tight whitespace-nowrap">{row.city || "S/D"}</span>
                               </td>
                               <td className="py-5">
                                 <div className="flex flex-col gap-1.5">
@@ -2035,7 +2060,7 @@ export default function Dashboard() {
                             </tr>
                           ))}
                           {stats.zoneTable.length === 0 && (
-                            <tr><td colSpan={3} className="py-24 text-center text-gray-400 italic font-medium uppercase text-[10px] tracking-widest">Sin datos disponibles</td></tr>
+                            <tr><td colSpan={4} className="py-24 text-center text-gray-400 italic font-medium uppercase text-[10px] tracking-widest">Sin datos disponibles</td></tr>
                           )}
                         </tbody>
                       </table>
