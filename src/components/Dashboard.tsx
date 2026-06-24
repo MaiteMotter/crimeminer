@@ -2140,7 +2140,9 @@ export default function Dashboard() {
                             <div className="grid grid-cols-2 gap-6 pt-6 border-t border-gray-50">
                               <div className="flex items-center gap-2">
                                 <MapPin className="h-3.5 w-3.5 text-gray-300" />
-                                <span className="text-[10px] font-black uppercase tracking-tighter text-gray-400">{c.neighborhood}</span>
+                                <span className="text-[10px] font-black uppercase tracking-tighter text-gray-400">
+                                  {getVal(c._rawRow, "cnombre_ciudad") || c.city || "S/D"}
+                                </span>
                               </div>
                               <div className="text-right">
                                 <span className="text-[10px] font-mono font-bold text-gray-300">{c.date}</span>
