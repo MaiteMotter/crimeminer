@@ -1,0 +1,4 @@
+Para que el sistema funcione automáticamente:
+1. Colocá tu archivo barrios.gpkg en esta carpeta.
+2. Asegurate de que se llame exactamente "barrios.gpkg".
+3. Al subir tu CSV de delitos, el sistema detectará el archivo y asignará los barrios automáticamente.

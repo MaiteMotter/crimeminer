@@ -1,0 +1,8 @@
+{
+  "name": "CrimeMiner",
+  "description": "Herramienta de minería de texto y análisis criminal para la identificación de patrones delictivos en denuncias.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
