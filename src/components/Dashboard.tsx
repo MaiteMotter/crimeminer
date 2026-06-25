@@ -2049,35 +2049,41 @@ export default function Dashboard() {
                         );
                       });
 
+                      const totalObjectsCount = (stats.objects || []).reduce((acc: number, curr: any) => acc + (curr.count || 0), 0);
+                      const visualObjectsCount = visualFilteredObjects.reduce((acc: number, curr: any) => acc + (curr.count || 0), 0);
+                      const cantidadOmitidos = totalObjectsCount - visualObjectsCount;
+
                       return (
-                        <div className="flex-grow w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={visualFilteredObjects} layout="vertical" margin={{ left: 10, right: 40, bottom: 20 }}>
-                              <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                              <XAxis type="number" hide />
-                              <YAxis 
-                                dataKey="name" 
-                                type="category" 
-                                axisLine={false} 
-                                tickLine={false} 
-                                tick={{ fontSize: 10, fill: '#64748b', fontWeight: 800, textTransform: 'uppercase' }} 
-                                width={140}
-                              />
-                              <Tooltip 
-                                cursor={{ fill: '#f8fafc' }} 
-                                contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }} 
-                              />
-                              <Bar dataKey="count" radius={[0, 12, 12, 0]} barSize={26}>
-                                {visualFilteredObjects.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} fillOpacity={0.9} />)}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
+                        <>
+                          <div className="flex-grow w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={visualFilteredObjects} layout="vertical" margin={{ left: 10, right: 40, bottom: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                                <XAxis type="number" hide />
+                                <YAxis 
+                                  dataKey="name" 
+                                  type="category" 
+                                  axisLine={false} 
+                                  tickLine={false} 
+                                  tick={{ fontSize: 10, fill: '#64748b', fontWeight: 800, textTransform: 'uppercase' }} 
+                                  width={140}
+                                />
+                                <Tooltip 
+                                  cursor={{ fill: '#f8fafc' }} 
+                                  contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }} 
+                                />
+                                <Bar dataKey="count" radius={[0, 12, 12, 0]} barSize={26}>
+                                  {visualFilteredObjects.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} fillOpacity={0.9} />)}
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <span className="text-slate-500 text-xs italic mt-2 block leading-relaxed">
+                            Nota metodológica: Un total de {cantidadOmitidos} objetos corresponden a objetos no identificados, los cuales han sido omitidos de este gráfico para optimizar la legibilidad visual sin alterar los indicadores globales del sistema. Por otro lado, las categorías de objetos contabilizan todos los bienes sustraídos. Por ello, el total de objetos registrados puede ser superior al total de delitos.
+                          </span>
+                        </>
                       );
                     })()}
-                    <span className="text-slate-500 text-xs italic mt-2 block leading-relaxed">
-                      Nota metodológica: Las categorías de objetos contabilizan todos los bienes sustraídos. Por ello, el total de objetos registrados puede ser superior al total de delitos.
-                    </span>
                   </div>
 
                   <div className="bg-white p-8 rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col h-full min-h-[600px]">
@@ -2126,10 +2132,11 @@ export default function Dashboard() {
                     <p className="text-[10px] text-gray-400 font-medium mt-6 border-t border-gray-100 pt-4">
                       {(() => {
                         const total = filteredCrimes.length;
-                        if (total === 0) return "*Nota metodológica: El 0,0% restante de los delitos se encuentra distribuido entre otros cuadrantes o zonas con menor incidencia relativa, por lo que no integran los sectores de mayor concentración delictiva identificados en el presente análisis.";
+                        const clarification = " En este cuadro se muestran exclusivamente los objetos y marcas vehiculares explícitamente identificados; aquellas celdas que visualmente se presentan vacías corresponden a cuadrantes donde no fue posible identificar un objeto o marca específica en los registros, sin que esto afecte el volumen total de incidentes contabilizados en la columna de cantidad ni el orden jerárquico de la tabla.";
+                        if (total === 0) return "*Nota metodológica: El 0,0% restante de los delitos se encuentra distribuido entre otros cuadrantes o zonas con menor incidencia relativa, por lo que no integran los sectores de mayor concentración delictiva identificados en el presente análisis." + clarification;
                         const sumTop = (stats.zoneTable || []).reduce((acc: number, curr: any) => acc + curr.count, 0);
                         const remainingPct = Math.max(0, ((total - sumTop) / total) * 100).toFixed(1).replace('.', ',');
-                        return `*Nota metodológica: El ${remainingPct}% restante de los delitos se encuentra distribuido entre otros cuadrantes o zonas con menor incidencia relativa, por lo que no integran los sectores de mayor concentración delictiva identificados en el presente análisis.`;
+                        return `*Nota metodológica: El ${remainingPct}% restante de los delitos se encuentra distribuido entre otros cuadrantes o zonas con menor incidencia relativa, por lo que no integran los sectores de mayor concentración delictiva identificados en el presente análisis.` + clarification;
                       })()}
                     </p>
                   </div>
