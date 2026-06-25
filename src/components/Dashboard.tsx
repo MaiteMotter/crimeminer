@@ -886,6 +886,8 @@ function PureLeafletMap({
   allCrimes?: any[];
   searchTerm?: string;
 }) {
+  const activeL: any = (window as any).L || L;
+
   const getChoroplethColor = (count: number): string => {
     if (count > 5000) return '#7f1d1d';
     if (count >= 2001) return '#b91c1c';
@@ -921,14 +923,14 @@ function PureLeafletMap({
 
     console.log("🗺️ Inicializando Leaflet...");
     try {
-      leafletMap.current = L.map(mapRef.current, {
+      leafletMap.current = activeL.map(mapRef.current, {
         center: [-32.95, -60.67],
         zoom: 12,
         zoomControl: false,
         fadeAnimation: true
       });
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      activeL.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap',
         subdomains: 'abcd',
         maxZoom: 20
@@ -966,7 +968,7 @@ function PureLeafletMap({
         console.log("📍 Barrios detectados en CSV:", stats.fullZoneTable?.length);
         
         try {
-          geoLayer.current = L.geoJSON(geoData, {
+          geoLayer.current = activeL.geoJSON(geoData, {
             style: (feature: any) => {
               const barrioName = getBarrioNameFromProps(feature?.properties);
               const localidad = feature?.properties?.localidad || feature?.properties?.Localidad || "";
@@ -1022,7 +1024,7 @@ function PureLeafletMap({
           .map(c => [c.lat, c.lng, 1]); // [lat, lng, intensity]
         
         // @ts-ignore - L.heatLayer viene de leaflet.heat
-        heatLayer.current = L.heatLayer(heatPoints, {
+        heatLayer.current = activeL.heatLayer(heatPoints, {
           radius: 25,
           blur: 15,
           maxZoom: 17,
