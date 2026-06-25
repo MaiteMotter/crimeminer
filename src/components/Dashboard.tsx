@@ -2132,7 +2132,7 @@ export default function Dashboard() {
                     <p className="text-[10px] text-gray-400 font-medium mt-6 border-t border-gray-100 pt-4">
                       {(() => {
                         const total = filteredCrimes.length;
-                        const clarification = " En este cuadro se muestran exclusivamente los objetos y marcas vehiculares explícitamente identificados; aquellas celdas que visualmente se presentan vacías corresponden a cuadrantes donde no fue posible identificar un objeto o marca específica en los registros, sin que esto afecte el volumen total de incidentes contabilizados en la columna de cantidad ni el orden jerárquico de la tabla.";
+                        const clarification = " En este cuadro se muestran exclusivamente los objetos y marcas explícitamente identificadas; aquellas celdas que visualmente se presentan vacías corresponden a cuadrantes donde no fue posible identificar un objeto o marca específica en los registros, sin que esto afecte el volumen total de incidentes contabilizados en la columna de cantidad ni el orden jerárquico de la tabla.";
                         if (total === 0) return "*Nota metodológica: El 0,0% restante de los delitos se encuentra distribuido entre otros cuadrantes o zonas con menor incidencia relativa, por lo que no integran los sectores de mayor concentración delictiva identificados en el presente análisis." + clarification;
                         const sumTop = (stats.zoneTable || []).reduce((acc: number, curr: any) => acc + curr.count, 0);
                         const remainingPct = Math.max(0, ((total - sumTop) / total) * 100).toFixed(1).replace('.', ',');
