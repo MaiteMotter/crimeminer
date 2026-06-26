@@ -13,8 +13,10 @@ import {
 import { 
   Search, Shield, Database, MapPin, Navigation, TrendingUp, AlertTriangle, 
   Zap, Target, ChevronRight, User, Tag, List, Activity, BarChart3, Sword,
-  Map as MapIcon, Layers, Calendar
+  Map as MapIcon, Layers, Calendar, Package
 } from 'lucide-react';
+
+const MOSTRAR_BOTONES_ADMIN = false;
 
 const COLORS = ['#3C4C9A', '#D0234F', '#EE751E', '#4A4963', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b'];
 
@@ -219,58 +221,85 @@ function analyzeMO(row: any) {
   return "En investigación";
 }
 
-function normalizeVehicleBrandModel(brandStr: string): string {
-  const s = String(brandStr || "").trim().toUpperCase();
-
-  if (!s || s === "S/D" || s === "SIN DATOS" || s === "NULL" || s === "UNDEFINED") {
-    return "Sin datos del vehículo";
-  }
-
-  // Split by common separators like " - " or "-" to check brand and model
-  const parts = s.split(/\s*-\s*/).map(p => p.trim());
-  
-  if (parts.length === 2) {
-    const brand = parts[0];
-    const model = parts[1];
-
-    const isBrandEmpty = !brand || brand === "S/MARCA" || brand === "S/D" || brand === "SIN MARCA" || brand === "SIN_MARCA";
-    const isModelEmpty = !model || model === "S/MODELO" || model === "S/D" || model === "SIN MODELO" || model === "SIN_MODELO";
-
-    if (isBrandEmpty && isModelEmpty) {
-      return "Sin datos del vehículo";
-    }
-    if (isBrandEmpty) {
-      return `Modelo: ${model} (Marca S/D)`;
-    }
-    if (isModelEmpty) {
-      return `${brand} (Modelo S/D)`;
-    }
-  } else if (parts.length === 1) {
-    if (s === "S/MARCA" || s === "S/MODELO" || s === "SIN MARCA" || s === "SIN MODELO") {
-      return "Sin datos del vehículo";
-    }
-  }
-
-  return s;
-}
-
 // 4. EXTRACTOR DE MARCAS (JERARQUÍA ESTRICTA LITERAL: CMARCA > CMARCAMODELO_VEHICULO)
 function extractBrands(row: any) {
   const cmarcaRaw = (getVal(row, "cmarca") || "").trim();
-  const cmarcaUpper = cmarcaRaw.toUpperCase();
-
-  // Prioridad Principal: Columna cmarca
-  if (cmarcaRaw !== "" && cmarcaUpper !== "S/D") {
-    return normalizeVehicleBrandModel(cmarcaUpper);
-  }
-
-  // Salto a Vehículo: Columna cmarcamodelo_vehiculo
   const cmarcamodeloRaw = (getVal(row, "cmarcamodelo_vehiculo") || "").trim();
-  const cmarcamodeloUpper = cmarcamodeloRaw.toUpperCase();
-  if (cmarcamodeloRaw !== "" && cmarcamodeloUpper !== "S/D") {
-    return normalizeVehicleBrandModel(cmarcamodeloUpper);
+
+  const invalidNames = [
+    "S/D", "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN DATOS", "SIN ESPECIFICAR", 
+    "S/M", "S/I", "NINGUNO", "NINGUNA", "SIN INFORMACION", "SIN INFORMACIÓN", "SIN REGISTRAR",
+    "S/MARCA", "S/MODELO", "SIN MARCA", "SIN MODELO", ""
+  ];
+
+  const isInvalid = (val: string) => {
+    const u = String(val || "").toUpperCase().trim();
+    return !u || invalidNames.includes(u);
+  };
+
+  const commonBrands = [
+    "FORD", "CHEVROLET", "FIAT", "VOLKSWAGEN", "VW", "RENAULT", "PEUGEOT", 
+    "TOYOTA", "HONDA", "HYUNDAI", "NISSAN", "CITROEN", "CITROËN", "MERCEDES", "BMW", "AUDI", "CHERY", "JEEP"
+  ];
+
+  const parseString = (str: string, defaultAsBrand: boolean) => {
+    const s = str.trim().toUpperCase();
+    if (s.includes("-")) {
+      const parts = s.split("-").map(p => p.trim());
+      const b = isInvalid(parts[0]) ? "" : parts[0];
+      const m = isInvalid(parts[1]) ? "" : parts[1];
+      return { brand: b, model: m };
+    }
+    
+    // Check if starts with a known brand
+    const words = s.split(/\s+/);
+    if (words.length > 1 && commonBrands.includes(words[0])) {
+      return { brand: words[0], model: words.slice(1).join(" ") };
+    }
+
+    if (defaultAsBrand) {
+      return { brand: s, model: "" };
+    } else {
+      // If it's a single word and matches a known brand, treat as brand
+      if (commonBrands.includes(s)) {
+        return { brand: s, model: "" };
+      }
+      return { brand: "", model: s };
+    }
+  };
+
+  // 1. Prioridad Principal ('cmarca')
+  if (!isInvalid(cmarcaRaw)) {
+    const { brand, model } = parseString(cmarcaRaw, true);
+    // If we have a model in cmarcamodeloRaw, we can try to use it if model is empty
+    let finalModel = model;
+    if (!finalModel && !isInvalid(cmarcamodeloRaw)) {
+      const extra = parseString(cmarcamodeloRaw, false);
+      if (extra.model) finalModel = extra.model;
+    }
+    
+    if (brand && finalModel) {
+      return `${brand} - ${finalModel}`;
+    } else if (brand) {
+      return `${brand} (Modelo S/D)`;
+    } else if (finalModel) {
+      return `Modelo: ${finalModel} (Marca S/D)`;
+    }
   }
 
+  // 2. Salto Condicional ('cmarcamodelo_vehiculo')
+  if (!isInvalid(cmarcamodeloRaw)) {
+    const { brand, model } = parseString(cmarcamodeloRaw, false);
+    if (brand && model) {
+      return `${brand} - ${model}`;
+    } else if (brand) {
+      return `${brand} (Modelo S/D)`;
+    } else if (model) {
+      return `Modelo: ${model} (Marca S/D)`;
+    }
+  }
+
+  // 3. Retorno por Indeterminación (regresa a 'cmarca' unificado bajo "Sin datos del vehículo")
   return "Sin datos del vehículo";
 }
 
@@ -917,6 +946,15 @@ function PureLeafletMap({
     );
   }, [allCrimes, searchTerm]);
 
+  const fitGeolocalizedBounds = () => {
+    if (!leafletMap.current) return;
+    const geoCrimes = crimes.filter((c: any) => c.lat && c.lng && c.polygonUniqueId);
+    if (geoCrimes.length === 0) return;
+    const latLngs = geoCrimes.map((c: any) => [c.lat, c.lng] as L.LatLngExpression);
+    const bounds = activeL.latLngBounds(latLngs);
+    leafletMap.current.fitBounds(bounds, { padding: [50, 50] });
+  };
+
   // Efecto para inicializar el mapa
   React.useEffect(() => {
     if (!mapRef.current || leafletMap.current) return;
@@ -1046,6 +1084,28 @@ function PureLeafletMap({
         className="bg-[#f8fafc]" 
         style={{ height: '600px', width: '100%', position: 'relative' }}
       />
+
+      {/* Botón de Contador de Geolocalizados en Cuadrantes */}
+      {MOSTRAR_BOTONES_ADMIN && (
+        <div className="absolute top-6 left-6 z-[1000] flex flex-col gap-2 pointer-events-auto">
+          <button
+            onClick={fitGeolocalizedBounds}
+            className="bg-white hover:bg-slate-50 text-slate-800 px-4 py-3 rounded-2xl shadow-xl border border-slate-100/80 flex items-center gap-2.5 transition-all active:scale-95 group/btn cursor-pointer"
+            title="Haga clic para enfocar todos los incidentes geolocalizados en cuadrantes"
+          >
+            <div className="w-5 h-5 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+              <MapPin size={12} className="animate-pulse" />
+            </div>
+            <div className="text-left">
+              <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider leading-none mb-0.5">En Cuadrantes</p>
+              <p className="text-xs font-black text-slate-800 leading-none">
+                {crimes.filter((c: any) => c.polygonUniqueId).length} <span className="text-[10px] text-slate-500 font-bold">Incidentes</span>
+              </p>
+            </div>
+            <ChevronRight size={14} className="text-slate-400 group-hover/btn:translate-x-0.5 transition-transform ml-1" />
+          </button>
+        </div>
+      )}
       
       {/* Leyenda de Referencias Flotante (Coropletas) */}
       {viewMode === 'choropleth' && (
@@ -1168,6 +1228,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = React.useState('overview');
   const [searchTerm, setSearchTerm] = React.useState('');
   const [crimes, setCrimes] = React.useState<any[]>([]);
+  const [crimesIncludingDuplicates, setCrimesIncludingDuplicates] = React.useState<any[]>([]);
   const [totalDenunciasUnicas, setTotalDenunciasUnicas] = React.useState(0);
   const [isUploading, setIsUploading] = React.useState(false);
   const [geoData, setGeoData] = React.useState<any>(null);
@@ -1293,12 +1354,48 @@ export default function Dashboard() {
           isSpatialJoined: true 
         };
       });
+
+      const updatedCrimesIncludingDuplicates = crimesIncludingDuplicates.map(c => {
+        let mappedZone = "Sin Cuadrante Asignado"; // Reset para cada punto
+        let isJoined = false;
+        let cityVal = "";
+        let polyUniqueId = "";
+
+        if (c.lat && c.lng && c.lat !== 0 && c.lng !== 0) {
+          try {
+            const pt = turf.point([c.lng, c.lat]);
+            for (const feature of geoData.features) {
+              if (turf.booleanPointInPolygon(pt, feature)) {
+                mappedZone = getBarrioNameFromProps(feature.properties);
+                cityVal = feature.properties?.localidad || feature.properties?.Localidad || "";
+                polyUniqueId = `${normalizeName(cityVal)}|${normalizeName(mappedZone)}`;
+                isJoined = true;
+                break;
+              }
+            }
+            if (!isJoined) {
+              mappedZone = "Resto de la Provincia";
+            }
+          } catch (e) {
+            mappedZone = "Resto de la Provincia";
+          }
+        }
+        
+        return { 
+          ...c, 
+          neighborhood: mappedZone, // Forzamos el uso de la zona del mapa
+          city: cityVal,
+          polygonUniqueId: isJoined ? polyUniqueId : null,
+          isSpatialJoined: true 
+        };
+      });
       
       setCrimes(updatedCrimes);
+      setCrimesIncludingDuplicates(updatedCrimesIncludingDuplicates);
       setSpatialJoined(true);
       console.log(`✅ Análisis geográfico finalizado. ${joinedCount} puntos asignados a barrios.`);
     }
-  }, [geoData, crimes, spatialJoined]);
+  }, [geoData, crimes, crimesIncludingDuplicates, spatialJoined]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -1312,6 +1409,7 @@ export default function Dashboard() {
       complete: (results) => {
         // REGLA: Conteo de denuncias basado en id_principal (registros únicos)
         // Se ignoran filas vacías o sin identificador válido para que el total coincida con la carga real.
+        const allRowsIncludingDuplicates: any[] = [];
         const uniqueRecords = new Map();
         const tempDenunciasSet = new Set();
         
@@ -1336,6 +1434,8 @@ export default function Dashboard() {
             tempDenunciasSet.add(idPrincipalRaw);
           }
 
+          allRowsIncludingDuplicates.push(row);
+
           // Clave de unicidad por id_actuacion_delito
           const idActuacionDelitoRaw = getVal(row, "id_actuacion_delito").trim();
           const keyUnica = idActuacionDelitoRaw || idPrincipalRaw || getVal(row, "id_denuncia").trim() || Math.random().toString();
@@ -1351,7 +1451,7 @@ export default function Dashboard() {
 
         const finalRows = Array.from(uniqueRecords.values());
 
-        const mappedData = finalRows.map((row: any) => {
+        const mapRow = (row: any) => {
           // Helper para limpiar coordenadas con comas y asegurar que sean números
           const parseCoord = (val: any) => {
             if (val === undefined || val === null || val === "") return 0;
@@ -1407,8 +1507,12 @@ export default function Dashboard() {
             rawAggMobility: aggMob,
             _rawRow: row
           };
-        });
+        };
+
+        const mappedData = finalRows.map(mapRow);
+        const mappedDataIncludingDuplicates = allRowsIncludingDuplicates.map(mapRow);
         setCrimes(mappedData);
+        setCrimesIncludingDuplicates(mappedDataIncludingDuplicates);
         setIsUploading(false);
       },
       error: () => setIsUploading(false)
@@ -1447,6 +1551,20 @@ export default function Dashboard() {
       return matchDescription || matchMO || matchZone || matchObject;
     });
   }, [crimes, searchTerm]);
+
+  const filteredCrimesIncludingDuplicates = React.useMemo(() => {
+    const s = searchTerm.toLowerCase().trim();
+    if (!s) return crimesIncludingDuplicates;
+    return crimesIncludingDuplicates.filter(c => {
+      const matchDescription = (c.description && c.description.toLowerCase().includes(s));
+      const matchMO = (c.modusOperandi && c.modusOperandi.toLowerCase().includes(s));
+      const matchZone = (c.neighborhood && c.neighborhood.toLowerCase().includes(s));
+      const matchObject = (c.targetObject && c.targetObject.toLowerCase().includes(s)) ||
+                          (c.objects && c.objects.some((obj: string) => obj.toLowerCase().includes(s)));
+
+      return matchDescription || matchMO || matchZone || matchObject;
+    });
+  }, [crimesIncludingDuplicates, searchTerm]);
 
   const filteredCrimesForStats = filteredCrimes;
 
@@ -1576,7 +1694,7 @@ export default function Dashboard() {
 
   const stats = React.useMemo(() => {
     const defaultStats = { 
-      objects: [], topBarrio: "N/A", topMO: "N/A", zoneTable: [], 
+      objects: [], objectsWithDuplicates: [], topBarrio: "N/A", topMO: "N/A", zoneTable: [], 
       mobility: [], pairs: [], weapons: [], contexts: [], topTangible: "N/A",
       topVulnerability: "SIN DATOS", topCoercion: "SIN DATOS", topEscape: "SIN DATOS",
       contextTipologias: [], contextModalidades: [],
@@ -1631,11 +1749,6 @@ export default function Dashboard() {
       
       // Acumulamos directamente el conteo por fila única
       objCounts[obj] = (objCounts[obj] || 0) + 1;
-      nDetails[b].objs[obj] = (nDetails[b].objs[obj] || 0) + 1;
-
-      if (c.brands !== "S/D") {
-        nDetails[b].brands[c.brands] = (nDetails[b].brands[c.brands] || 0) + 1;
-      }
 
       moCounts[c.modusOperandi] = (moCounts[c.modusOperandi] || 0) + 1;
       
@@ -1702,6 +1815,33 @@ export default function Dashboard() {
       });
     });
 
+    // Minería Expansiva de Marcas y Objetos: Se procesa la totalidad de las filas de CrimesIncludingDuplicates para el conteo
+    filteredCrimesIncludingDuplicates.forEach(c => {
+      const b = c.neighborhood;
+      if (!nDetails[b]) {
+        nDetails[b] = { objs: {}, brands: {}, cities: {} };
+      }
+      
+      // Objeto expansivo
+      let obj = c.targetObject || "OBJETO NO IDENTIFICADO";
+      const uObj = String(obj).toUpperCase().trim();
+      const ambiguousObjNames = [
+        "S/D", "FALTA DETERMINAR OBJETO", "OBJETO NO IDENTIFICADO", "SIN DATOS", 
+        "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", 
+        "BIEN NO ESPECIFICADO / OTROS", "", "SIN INFORMACION", "SIN INFORMACIÓN", 
+        "SIN_INFORMACION", "SIN_INFORMACIÓN", "SIN DATA", "EN INVESTIGACIÓN", "EN INVESTIGACION", "S/M"
+      ];
+      if (!obj || ambiguousObjNames.includes(uObj)) {
+        obj = "OBJETO NO IDENTIFICADO";
+      }
+      nDetails[b].objs[obj] = (nDetails[b].objs[obj] || 0) + 1;
+
+      // Marca expansiva
+      if (c.brands) {
+        nDetails[b].brands[c.brands] = (nDetails[b].brands[c.brands] || 0) + 1;
+      }
+    });
+
     const sortedBarrios = Object.entries(nCounts).sort((a: any, b: any) => b[1] - a[1]);
 
     const weaponArr = Object.entries(weaponCounts).map(([name, value]) => ({ name, value: value as number })).sort((a, b) => b.value - a.value);
@@ -1720,14 +1860,50 @@ export default function Dashboard() {
       objectsToReturn = [...top11, { name: "OTROS BIENES SECUNDARIOS", count: otherCount }];
     }
 
-    // 3. Algoritmo de Salto en la Serie para el Gráfico/Listado
+    const objCountsWithDuplicates: any = {};
+    filteredCrimesIncludingDuplicates.forEach(c => {
+      let obj = c.targetObject || "OBJETO NO IDENTIFICADO";
+      const uObj = String(obj).toUpperCase().trim();
+      const ambiguousObjNames = [
+        "S/D", "FALTA DETERMINAR OBJETO", "OBJETO NO IDENTIFICADO", "SIN DATOS", 
+        "NULL", "UNDEFINED", "SIN CLASIFICAR", "SIN ESPECIFICAR", "NINGUNO", "NINGUNA", 
+        "BIEN NO ESPECIFICADO / OTROS", "", "SIN INFORMACION", "SIN INFORMACIÓN", 
+        "SIN_INFORMACION", "SIN_INFORMACIÓN", "SIN DATA", "EN INVESTIGACIÓN", "EN INVESTIGACION", "S/M"
+      ];
+      if (!obj || ambiguousObjNames.includes(uObj)) {
+        obj = "OBJETO NO IDENTIFICADO";
+      }
+      objCountsWithDuplicates[obj] = (objCountsWithDuplicates[obj] || 0) + 1;
+    });
+
+    const sortedObjectsWithDuplicates = Object.entries(objCountsWithDuplicates).map(([name, count]) => ({ name, count: count as number })).sort((a,b) => b.count - a.count);
+    
+    let objectsWithDuplicatesToReturn = [...sortedObjectsWithDuplicates];
+    if (objectsWithDuplicatesToReturn.length > 12) {
+      const top11 = objectsWithDuplicatesToReturn.slice(0, 11);
+      const remaining = objectsWithDuplicatesToReturn.slice(11);
+      const otherCount = remaining.reduce((acc, curr) => acc + curr.count, 0);
+      objectsWithDuplicatesToReturn = [...top11, { name: "OTROS BIENES SECUNDARIOS", count: otherCount }];
+    }
+
+    // 3. Algoritmo de Salto en la Serie para el Gráfico/Listado (Utilizando duplicados para Conteo Total de objetos)
     let topTangible = "No identificado";
-    if (sortedObjects.length > 0) {
-      const invalidNames = ["S/D", "BIEN NO ESPECIFICADO / OTROS", "FALTA DETERMINAR OBJETO", "OBJETO NO IDENTIFICADO", "SIN DATOS", "NULL", "UNDEFINED", "SIN CLASIFICAR"];
-      if (invalidNames.includes(sortedObjects[0].name.toUpperCase())) {
-        topTangible = sortedObjects[1] ? sortedObjects[1].name : sortedObjects[0].name;
+    if (sortedObjectsWithDuplicates.length > 0) {
+      const invalidNames = [
+        "S/D", "BIEN NO ESPECIFICADO / OTROS", "FALTA DETERMINAR OBJETO", "OBJETO NO IDENTIFICADO", 
+        "SIN DATOS", "NULL", "UNDEFINED", "SIN CLASIFICAR", "", "EN INVESTIGACIÓN", "EN INVESTIGACION",
+        "S/M", "SIN INFORMACION", "SIN INFORMACIÓN", "SIN_INFORMACION", "SIN_INFORMACIÓN", "SIN DATA",
+        "NINGUNO", "NINGUNA", "SIN ESPECIFICAR"
+      ];
+      const isInvalid = (name: string) => {
+        const u = name.toUpperCase().trim();
+        return invalidNames.includes(u) || u === "";
+      };
+      const firstValidObj = sortedObjectsWithDuplicates.find(o => !isInvalid(o.name));
+      if (firstValidObj) {
+        topTangible = firstValidObj.name;
       } else {
-        topTangible = sortedObjects[0].name;
+        topTangible = sortedObjectsWithDuplicates[0].name;
       }
     }
 
@@ -1741,6 +1917,7 @@ export default function Dashboard() {
 
     return {
       objects: objectsToReturn,
+      objectsWithDuplicates: objectsWithDuplicatesToReturn,
       topTangible,
       topBarrio: filteredBarrios[0]?.[0] || "N/A",
       topMO: (() => {
@@ -1748,7 +1925,12 @@ export default function Dashboard() {
         if (sortedMOs.length === 0) return "En investigación";
         const isGeneric = (val: string) => {
           const u = val.toUpperCase().trim();
-          return u === "" || u === "SIN CLASIFICAR" || u === "S/D" || u === "SIN DATOS" || u === "NULL" || u === "UNDEFINED" || u === "EN INVESTIGACIÓN" || u === "EN INVESTIGACION" || u === "SIN ESPECIFICAR";
+          const list = [
+            "S/D", "SIN CLASIFICAR", "SIN DATOS", "NULL", "", "EN INVESTIGACIÓN", "EN INVESTIGACION",
+            "SIN ESPECIFICAR / EN INVESTIGACION", "SIN ESPECIFICAR", "UNDEFINED", "S/M", "S/I",
+            "SIN INFORMACIÓN", "SIN INFORMACION", "NINGUNO", "NINGUNA"
+          ];
+          return list.includes(u) || u === "";
         };
         const firstMO = sortedMOs[0][0];
         if (isGeneric(firstMO)) {
@@ -1758,20 +1940,25 @@ export default function Dashboard() {
         return firstMO;
       })(),
       zoneTable: filteredBarrios.slice(0, 10).map(([name, count]: any) => {
-        const rawBrandEntries = Object.entries(nDetails[name].brands).sort((a: any, b: any) => b[1] - a[1]);
-        const isBrandGeneric = (val: string) => {
-          const u = val.toUpperCase().trim();
-          return u === "" || u === "SIN DATOS DEL VEHÍCULO" || u === "SIN DATOS DEL VEHICULO" || u === "SIN MARCA ESPECIFICADA" || u === "SIN MARCA" || u === "SIN_MARCA" || u === "S/MARCA" || u === "S/D" || u === "SIN DATOS" || u === "NULL" || u === "UNDEFINED" || u === "SIN CLASIFICAR";
+        const isGeneric = (val: string) => {
+          const u = String(val || "").toUpperCase().trim();
+          const genericList = [
+            "S/D", "SIN DATOS DEL VEHÍCULO", "SIN DATOS DEL VEHICULO", "SIN MARCA ESPECIFICADA", 
+            "SIN MARCA", "SIN_MARCA", "S/MARCA", "SIN DATOS", "NULL", "UNDEFINED", 
+            "SIN CLASIFICAR", "OBJETO NO IDENTIFICADO", "BIEN NO ESPECIFICADO / OTROS", 
+            "SIN ESPECIFICAR", "VACIO", "VACÍO", "FALTA DETERMINAR OBJETO", "", 
+            "EN INVESTIGACIÓN", "EN INVESTIGACION", "S/M", "S/I", "NINGUNO", "NINGUNA", 
+            "SIN INFORMACION", "SIN INFORMACIÓN", "SIN REGISTRAR"
+          ];
+          return genericList.includes(u) || u === "";
         };
-        const topBrandEntry = rawBrandEntries.find(x => !isBrandGeneric(x[0]));
+
+        const rawBrandEntries = Object.entries(nDetails[name].brands).sort((a: any, b: any) => b[1] - a[1]);
+        const topBrandEntry = rawBrandEntries.find(x => !isGeneric(x[0]));
         const brandsStr = topBrandEntry ? `${topBrandEntry[0].replace(/VEHICULO\s*1\s*:\s*/gi, "").trim()} (${topBrandEntry[1]})` : "";
 
         const rawObjEntries = Object.entries(nDetails[name].objs).sort((a: any, b: any) => b[1] - a[1]);
-        const isObjGeneric = (val: string) => {
-          const u = val.toUpperCase().trim();
-          return u === "" || u === "OBJETO NO IDENTIFICADO" || u === "BIEN NO ESPECIFICADO / OTROS" || u === "S/D" || u === "SIN ESPECIFICAR" || u === "SIN CLASIFICAR" || u === "SIN DATOS" || u === "NULL" || u === "UNDEFINED" || u === "VACIO" || u === "VACÍO" || u === "FALTA DETERMINAR OBJETO";
-        };
-        const topObjEntry = rawObjEntries.find(x => !isObjGeneric(x[0]));
+        const topObjEntry = rawObjEntries.find(x => !isGeneric(x[0]));
         const objsStr = topObjEntry ? topObjEntry[0].replace(/VEHICULO\s*1\s*:\s*/gi, "").trim() : "";
 
         const rawCityEntries = Object.entries(nDetails[name].cities || {}).sort((a: any, b: any) => b[1] - a[1]);
@@ -1792,11 +1979,11 @@ export default function Dashboard() {
       fullZoneTable: Object.entries(nCounts).map(([name, count]: any) => ({ name, count })),
       polyCounts
     };
-  }, [filteredCrimesForStats]);
+  }, [filteredCrimesForStats, filteredCrimesIncludingDuplicates]);
 
   // ANÁLISIS LDA Y MÉTRICAS (Minería de Texto - ANÁLISIS CRUZADO ESTRÍCTO)
   const textAnalysis = React.useMemo(() => {
-    if (filteredCrimesForStats.length === 0) {
+    if (filteredCrimesIncludingDuplicates.length === 0) {
       return { 
         lda: [], 
         remainingPercentage: 100, 
@@ -1805,9 +1992,9 @@ export default function Dashboard() {
     }
     
     const comboCounts: Record<string, number> = {};
-    let totalCount = filteredCrimesForStats.length;
+    let totalCount = filteredCrimesIncludingDuplicates.length;
 
-    filteredCrimesForStats.forEach(c => {
+    filteredCrimesIncludingDuplicates.forEach(c => {
       let place = sanitizeEncodingError(c.placeType || "En investigación");
       if (place === "ENTORNO NO ESPECIFICADO") place = "En investigación";
 
@@ -1882,7 +2069,7 @@ export default function Dashboard() {
 
     // Seleccionar únicamente el Top 3 de combinaciones con agrupamiento de frecuencias reales
     const top3 = sortedCombos.slice(0, 3);
-    
+     
     const ldaResult = top3.map((item, i) => ({
       topic: item.topic,
       weight: item.weight,
@@ -1905,7 +2092,7 @@ export default function Dashboard() {
       remainingPercentage,
       metrics: { coherence: 0.88, obs: totalCount, trust: totalCount > 100 ? 96 : 80 } 
     };
-  }, [filteredCrimesForStats]);
+  }, [filteredCrimesIncludingDuplicates]);
 
   const formattedWeaponsData = React.useMemo(() => {
     const list = stats.weapons || [];
@@ -1935,6 +2122,10 @@ export default function Dashboard() {
       remainingPct
     };
   }, [stats.weapons, filteredCrimesForStats]);
+
+  const totalValidBrandsCount = React.useMemo(() => {
+    return filteredCrimesIncludingDuplicates.filter(c => c.brands && c.brands !== "SIN MARCA ESPECIFICADA").length;
+  }, [filteredCrimesIncludingDuplicates]);
 
   return (
     <div className="min-h-screen bg-[#F0F2F5] text-[#1e293b] font-sans selection:bg-[#3C4C9A]/30">
@@ -2034,9 +2225,33 @@ export default function Dashboard() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-stretch">
                   <div className="bg-white p-8 rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col h-full min-h-[600px]">
-                    <h4 className="font-black mb-10 flex items-center gap-3 text-gray-800 uppercase text-[10px] tracking-[0.2em] leading-none"><TrendingUp size={16} className="text-[#3C4C9A]" /> Objetos más Afectados</h4>
+                    <div className="flex justify-between items-center mb-10">
+                      <h4 className="font-black flex items-center gap-3 text-gray-800 uppercase text-[10px] tracking-[0.2em] leading-none"><TrendingUp size={16} className="text-[#3C4C9A]" /> Objetos más Afectados</h4>
+                      <div className="flex items-center gap-2">
+                        {MOSTRAR_BOTONES_ADMIN && (
+                          <button 
+                            className="bg-slate-50 hover:bg-slate-100 text-[#3C4C9A] text-[10px] font-black px-3.5 py-1.5 rounded-full border border-slate-100 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                            title="Cantidad de delitos analizados (basado en la unicidad de fecha y lugar)"
+                            onClick={() => alert(`Total de delitos bajo análisis: ${filteredCrimes.length} denuncias.`)}
+                          >
+                            <Database size={10} />
+                            Delitos: {filteredCrimes.length}
+                          </button>
+                        )}
+                        {MOSTRAR_BOTONES_ADMIN && (
+                          <button 
+                            className="bg-slate-50 hover:bg-slate-100 text-[#EE751E] text-[10px] font-black px-3.5 py-1.5 rounded-full border border-slate-100 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                            title="Cantidad de objetos analizados (conteo total de objetos, incluyendo IDs repetidos)"
+                            onClick={() => alert(`Total de objetos bajo análisis (incluyendo IDs duplicados): ${filteredCrimesIncludingDuplicates.length} objetos.`)}
+                          >
+                            <TrendingUp size={10} />
+                            Objetos: {filteredCrimesIncludingDuplicates.length}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                     {(() => {
-                      const visualFilteredObjects = (stats.objects || []).filter((obj: any) => {
+                      const visualFilteredObjects = (stats.objectsWithDuplicates || []).filter((obj: any) => {
                         const uName = String(obj?.name || "").toUpperCase().trim();
                         return (
                           uName !== "" &&
@@ -2051,7 +2266,7 @@ export default function Dashboard() {
                         );
                       });
 
-                      const totalObjectsCount = (stats.objects || []).reduce((acc: number, curr: any) => acc + (curr.count || 0), 0);
+                      const totalObjectsCount = (stats.objectsWithDuplicates || []).reduce((acc: number, curr: any) => acc + (curr.count || 0), 0);
                       const visualObjectsCount = visualFilteredObjects.reduce((acc: number, curr: any) => acc + (curr.count || 0), 0);
                       const cantidadOmitidos = totalObjectsCount - visualObjectsCount;
 
@@ -2089,8 +2304,13 @@ export default function Dashboard() {
                   </div>
 
                   <div className="bg-white p-8 rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col h-full min-h-[600px]">
-                    <h4 className="font-black mb-2 flex items-center gap-3 text-gray-800 uppercase text-[10px] tracking-[0.2em] leading-none"><MapPin size={16} className="text-[#D0234F]" /> Mapa de Concentración</h4>
-                    <p className="text-xs text-slate-500 mb-8 font-medium">Mostrando Top 10 relatos de las zonas asociadas a los {filteredCrimes.length} delitos analizados</p>
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex flex-col gap-1.5">
+                        <h4 className="font-black flex items-center gap-3 text-gray-800 uppercase text-[10px] tracking-[0.2em] leading-none"><MapPin size={16} className="text-[#D0234F]" /> Mapa de Concentración</h4>
+                        <p className="text-xs text-slate-500 font-medium">Mostrando Top 10 relatos de las zonas asociadas a los {filteredCrimes.length} delitos analizados</p>
+                      </div>
+
+                    </div>
                     <div className="overflow-x-auto flex-grow">
                       <table className="w-full text-left">
                         <thead className="text-[10px] uppercase text-gray-400 border-b border-gray-100 pb-4">
@@ -2131,6 +2351,31 @@ export default function Dashboard() {
                         </tbody>
                       </table>
                     </div>
+                    {MOSTRAR_BOTONES_ADMIN && (
+                      <div className="flex flex-wrap items-center gap-3 mt-6 pb-4 border-b border-gray-100">
+                        <button 
+                          className="bg-indigo-50/50 hover:bg-indigo-100 text-[#3C4C9A] text-[10px] font-black px-4 py-2 rounded-full border border-indigo-100 uppercase tracking-wider flex items-center gap-2 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                          onClick={() => alert(`Total Delitos Analizados: ${filteredCrimes.length} denuncias únicas (id_actuacion_delito).`)}
+                        >
+                          <Database size={12} className="text-[#3C4C9A]" />
+                          Total Delitos: {filteredCrimes.length}
+                        </button>
+                        <button 
+                          className="bg-rose-50/50 hover:bg-rose-100 text-[#D0234F] text-[10px] font-black px-4 py-2 rounded-full border border-rose-100 uppercase tracking-wider flex items-center gap-2 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                          onClick={() => alert(`Total Objetos Analizados (minería expansiva): ${filteredCrimesIncludingDuplicates.length} registros.`)}
+                        >
+                          <Package size={12} className="text-[#D0234F]" />
+                          Total Objetos: {filteredCrimesIncludingDuplicates.length}
+                        </button>
+                        <button 
+                          className="bg-orange-50/50 hover:bg-orange-100 text-[#EE751E] text-[10px] font-black px-4 py-2 rounded-full border border-orange-100 uppercase tracking-wider flex items-center gap-2 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                          onClick={() => alert(`Total Marcas Analizadas (minería expansiva): ${filteredCrimesIncludingDuplicates.length} registros.`)}
+                        >
+                          <Tag size={12} className="text-[#EE751E]" />
+                          Total Marcas: {filteredCrimesIncludingDuplicates.length}
+                        </button>
+                      </div>
+                    )}
                     <p className="text-[10px] text-gray-400 font-medium mt-6 border-t border-gray-100 pt-4">
                       {(() => {
                         const total = filteredCrimes.length;
@@ -2164,13 +2409,28 @@ export default function Dashboard() {
                           </p>
                         )}
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-2">
                         <span className="bg-green-50 text-green-600 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-green-100">NLP V2.0</span>
-                        <span className="bg-gray-50 text-gray-400 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-gray-100">
-                          {stats.topMO && stats.topMO !== "SIN CLASIFICAR" && stats.topMO !== "N/A" && stats.topMO !== "SIN DATOS"
-                            ? `${filteredCrimes.filter(c => c.modusOperandi === stats.topMO).slice(0, 10).length} de ${filteredCrimes.filter(c => c.modusOperandi === stats.topMO).length}`
-                            : filteredCrimes.length} Registros
-                        </span>
+                        {MOSTRAR_BOTONES_ADMIN && (
+                          <button 
+                            className="bg-slate-50 hover:bg-slate-100 text-[#3C4C9A] text-[10px] font-black px-3.5 py-1.5 rounded-full border border-slate-100 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                            title="Cantidad de delitos analizados (basado en la unicidad de fecha y lugar)"
+                            onClick={() => alert(`Total de delitos bajo análisis: ${filteredCrimes.length} denuncias.`)}
+                          >
+                            <Database size={10} />
+                            Delitos: {filteredCrimes.length}
+                          </button>
+                        )}
+                        {MOSTRAR_BOTONES_ADMIN && (
+                          <button 
+                            className="bg-slate-50 hover:bg-slate-100 text-[#EE751E] text-[10px] font-black px-3.5 py-1.5 rounded-full border border-slate-100 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                            title="Cantidad de objetos analizados (conteo total de objetos, incluyendo IDs repetidos)"
+                            onClick={() => alert(`Total de objetos bajo análisis (incluyendo IDs duplicados): ${filteredCrimesIncludingDuplicates.length} objetos.`)}
+                          >
+                            <TrendingUp size={10} />
+                            Objetos: {filteredCrimesIncludingDuplicates.length}
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="flex-grow flex-1 min-h-0 overflow-y-auto space-y-5 pr-4 scrollbar-thin hover:scrollbar-thumb-gray-300">
@@ -2224,9 +2484,21 @@ export default function Dashboard() {
 
                 <div className="flex flex-col h-full space-y-8 bg-transparent">
                   <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-                    <h3 className="text-[10px] font-black uppercase text-gray-400 mb-2 tracking-[0.25em] flex items-center gap-3">
-                      <Sword size={14} className="text-[#EE751E]" /> Análisis de Medios Empleados
-                    </h3>
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-[0.25em] flex items-center gap-3">
+                        <Sword size={14} className="text-[#EE751E]" /> Análisis de Medios Empleados
+                      </h3>
+                      {MOSTRAR_BOTONES_ADMIN && (
+                        <button 
+                          className="bg-slate-50 hover:bg-slate-100 text-[#EE751E] text-[10px] font-black px-3.5 py-1.5 rounded-full border border-slate-100 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                          title="Haga clic para ver el total de registros en análisis"
+                          onClick={() => alert(`Total de registros bajo análisis en este panel: ${filteredCrimes.length} denuncias.`)}
+                        >
+                          <Database size={10} />
+                          Analizando: {filteredCrimes.length} Registros
+                        </button>
+                      )}
+                    </div>
                     <p className="text-slate-500 text-[10px] mt-1 mb-6 leading-normal">
                       Mostrando el Top 8 de medios más frecuentes. El {formattedWeaponsData.remainingPct}% restante corresponde a categorías con menor frecuencia, agrupadas bajo la etiqueta 'Otros Medios'.
                     </p>
@@ -2259,7 +2531,31 @@ export default function Dashboard() {
                   </div>
 
                   <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-                    <h3 className="text-[10px] font-black uppercase text-gray-400 mb-10 tracking-[0.25em]">Análisis de Tópicos Emergentes</h3>
+                    <div className="flex justify-between items-center mb-10">
+                      <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-[0.25em]">Análisis de Tópicos Emergentes</h3>
+                      <div className="flex items-center gap-2">
+                        {MOSTRAR_BOTONES_ADMIN && (
+                          <button 
+                            className="bg-slate-50 hover:bg-slate-100 text-[#3C4C9A] text-[10px] font-black px-3.5 py-1.5 rounded-full border border-slate-100 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                            title="Cantidad de delitos analizados (basado en la unicidad de fecha y lugar)"
+                            onClick={() => alert(`Total de delitos bajo análisis: ${filteredCrimes.length} denuncias.`)}
+                          >
+                            <Database size={10} />
+                            Delitos: {filteredCrimes.length}
+                          </button>
+                        )}
+                        {MOSTRAR_BOTONES_ADMIN && (
+                          <button 
+                            className="bg-slate-50 hover:bg-slate-100 text-[#EE751E] text-[10px] font-black px-3.5 py-1.5 rounded-full border border-slate-100 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                            title="Cantidad de objetos analizados (conteo total de objetos, incluyendo IDs repetidos)"
+                            onClick={() => alert(`Total de objetos bajo análisis (incluyendo IDs duplicados): ${filteredCrimesIncludingDuplicates.length} objetos.`)}
+                          >
+                            <TrendingUp size={10} />
+                            Objetos: {filteredCrimesIncludingDuplicates.length}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                     <div className="space-y-8">
                       {textAnalysis.lda.map((t, i) => (
                         <div key={i} className="group">
@@ -2288,7 +2584,19 @@ export default function Dashboard() {
                   </div>
                   <div className="bg-[#1e293b] p-8 rounded-[40px] shadow-2xl text-white relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-3xl transition-all duration-700 group-hover:scale-150" />
-                    <h3 className="text-[10px] font-black uppercase text-gray-500 mb-10 tracking-[0.25em] relative z-10">Métricas de Patrón</h3>
+                    <div className="flex justify-between items-center mb-10 relative z-10">
+                      <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-[0.25em]">Métricas de Patrón</h3>
+                      {MOSTRAR_BOTONES_ADMIN && (
+                        <button 
+                          className="bg-white/10 hover:bg-white/20 text-white text-[10px] font-black px-3.5 py-1.5 rounded-full border border-white/10 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                          title="Haga clic para ver el total de registros en análisis"
+                          onClick={() => alert(`Total de registros bajo análisis en este panel: ${filteredCrimes.length} denuncias.`)}
+                        >
+                          <Database size={10} className="text-white" />
+                          Analizando: {filteredCrimes.length} Registros
+                        </button>
+                      )}
+                    </div>
                     <div className="space-y-6 relative z-10">
                       {[
                         { label: 'Coherencia Semántica', value: textAnalysis.metrics.coherence, color: 'text-indigo-400' },
@@ -2311,9 +2619,21 @@ export default function Dashboard() {
               <div className="space-y-10">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                   <div className="bg-white p-8 rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col h-full min-h-[500px]">
-                    <h4 className="font-black mb-6 flex items-center gap-3 text-gray-800 uppercase text-[10px] tracking-[0.2em] leading-none">
-                      <Zap size={16} className="text-[#3C4C9A]" /> Análisis por Tipología de Contexto
-                    </h4>
+                    <div className="flex justify-between items-center mb-6">
+                      <h4 className="font-black flex items-center gap-3 text-gray-800 uppercase text-[10px] tracking-[0.2em] leading-none">
+                        <Zap size={16} className="text-[#3C4C9A]" /> Análisis por Tipología de Contexto
+                      </h4>
+                      {MOSTRAR_BOTONES_ADMIN && (
+                        <button 
+                          className="bg-slate-50 hover:bg-slate-100 text-[#3C4C9A] text-[10px] font-black px-3.5 py-1.5 rounded-full border border-slate-100 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                          title="Haga clic para ver el total de registros en análisis"
+                          onClick={() => alert(`Total de registros bajo análisis en este panel: ${filteredCrimes.length} denuncias.`)}
+                        >
+                          <Database size={10} />
+                          Analizando: {filteredCrimes.length} Registros
+                        </button>
+                      )}
+                    </div>
                     <div className="flex-grow w-full relative min-h-[350px]">
                       {stats.contextTipologias.length === 0 ? (
                         <p className="text-[10px] text-gray-400 font-bold italic text-center py-20 uppercase tracking-widest">Sin datos de tipología</p>
@@ -2357,9 +2677,21 @@ export default function Dashboard() {
                   </div>
 
                   <div className="bg-white p-8 rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col h-full min-h-[500px]">
-                    <h4 className="font-black mb-6 flex items-center gap-3 text-gray-800 uppercase text-[10px] tracking-[0.2em] leading-none">
-                      <Layers size={16} className="text-[#D0234F]" /> Análisis por Modalidad del Contexto
-                    </h4>
+                    <div className="flex justify-between items-center mb-6">
+                      <h4 className="font-black flex items-center gap-3 text-gray-800 uppercase text-[10px] tracking-[0.2em] leading-none">
+                        <Layers size={16} className="text-[#D0234F]" /> Análisis por Modalidad del Contexto
+                      </h4>
+                      {MOSTRAR_BOTONES_ADMIN && (
+                        <button 
+                          className="bg-slate-50 hover:bg-slate-100 text-[#D0234F] text-[10px] font-black px-3.5 py-1.5 rounded-full border border-slate-100 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                          title="Haga clic para ver el total de registros en análisis"
+                          onClick={() => alert(`Total de registros bajo análisis en este panel: ${filteredCrimes.length} denuncias.`)}
+                        >
+                          <Database size={10} />
+                          Analizando: {filteredCrimes.length} Registros
+                        </button>
+                      )}
+                    </div>
                     <div className="flex-grow w-full relative min-h-[350px]">
                       {stats.contextModalidades.length === 0 ? (
                         <p className="text-[10px] text-gray-400 font-bold italic text-center py-20 uppercase tracking-widest">Sin datos de modalidad</p>
@@ -2406,9 +2738,21 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* NUEVA TARJETA: Análisis de Modus Operandi */}
                   <div className="lg:col-span-2 bg-white p-8 rounded-[40px] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between min-h-[500px]">
-                    <h3 className="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-[0.25em] flex items-center gap-3">
-                      <List size={14} className="text-[#EE751E]" /> Análisis de Modus Operandi
-                    </h3>
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-[0.25em] flex items-center gap-3">
+                        <List size={14} className="text-[#EE751E]" /> Análisis de Modus Operandi
+                      </h3>
+                      {MOSTRAR_BOTONES_ADMIN && (
+                        <button 
+                          className="bg-slate-50 hover:bg-slate-100 text-[#EE751E] text-[10px] font-black px-3.5 py-1.5 rounded-full border border-slate-100 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                          title="Haga clic para ver el total de registros en análisis"
+                          onClick={() => alert(`Total de registros bajo análisis en este panel: ${filteredCrimes.length} denuncias.`)}
+                        >
+                          <Database size={10} />
+                          Analizando: {filteredCrimes.length} Registros
+                        </button>
+                      )}
+                    </div>
                     <div className="flex-grow w-full relative min-h-[350px]">
                       {(stats.modusOperandiStats || []).length === 0 ? (
                         <p className="text-[10px] text-gray-400 font-bold italic text-center py-20 uppercase tracking-widest">Sin datos de Modus Operandi</p>
@@ -2452,9 +2796,21 @@ export default function Dashboard() {
                   </div>
 
                   <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between h-full min-h-[500px]">
-                    <h3 className="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-[0.25em] flex items-center gap-3">
-                      <AlertTriangle size={14} className="text-[#3C4C9A]" /> Análisis del Contexto delictivo
-                    </h3>
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-[0.25em] flex items-center gap-3">
+                        <AlertTriangle size={14} className="text-[#3C4C9A]" /> Análisis del Contexto delictivo
+                      </h3>
+                      {MOSTRAR_BOTONES_ADMIN && (
+                        <button 
+                          className="bg-slate-50 hover:bg-slate-100 text-[#3C4C9A] text-[10px] font-black px-3.5 py-1.5 rounded-full border border-slate-100 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                          title="Haga clic para ver el total de registros en análisis"
+                          onClick={() => alert(`Total de registros bajo análisis en este panel: ${filteredCrimes.length} denuncias.`)}
+                        >
+                          <Database size={10} />
+                          Analizando: {filteredCrimes.length} Registros
+                        </button>
+                      )}
+                    </div>
                     <div className="flex-grow w-full relative min-h-[350px]">
                       {(stats.contexts || []).length === 0 ? (
                         <p className="text-[10px] text-gray-400 font-bold italic text-center py-20 uppercase tracking-widest">Sin datos de contexto</p>
@@ -2505,6 +2861,16 @@ export default function Dashboard() {
                       <h3 className="text-white text-xs font-black uppercase tracking-[0.3em] flex items-center gap-4">
                         <Zap size={16} className="text-orange-400" /> Inteligencia Táctica (Minería Local Privada)
                       </h3>
+                      {MOSTRAR_BOTONES_ADMIN && (
+                        <button 
+                          className="bg-white/10 hover:bg-white/20 text-white text-[10px] font-black px-3.5 py-1.5 rounded-full border border-white/10 uppercase tracking-wider flex items-center gap-1.5 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap"
+                          title="Haga clic para ver el total de registros en análisis"
+                          onClick={() => alert(`Total de registros bajo análisis en este panel: ${filteredCrimes.length} denuncias.`)}
+                        >
+                          <Database size={10} className="text-white" />
+                          Analizando: {filteredCrimes.length} Registros
+                        </button>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
